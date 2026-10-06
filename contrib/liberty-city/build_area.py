@@ -7,7 +7,7 @@ subfolders beside them); <area.json> comes from `python -m liberty.select_area`.
 Each placed model becomes an object sharing one mesh per model. Its solid faces
 collide as an exact triangle mesh with a surface guessed from the texture;
 decals, wires, foliage and glass are drawn with no collision. A spawn goes on
-the ground at the box's centre. Models with no .odr (props in other archives,
+the open street nearest the box's centre. Models with no .odr (props in other archives,
 or ones packed in .odd dictionaries) are skipped and counted.
 
 GTA IV stores placement rotations as the inverse quaternion, so they are
@@ -145,10 +145,29 @@ def place(area: dict, builder: Builder, conjugate: bool) -> Counter:
     return counts
 
 
-def ground_height(x: float, y: float) -> float:
+def _hits(x: float, y: float) -> list[float]:
+    """Heights of every surface straight down at (x, y), top first."""
     depsgraph = bpy.context.evaluated_depsgraph_get()
-    hit, location, *_ = bpy.context.scene.ray_cast(depsgraph, Vector((x, y, 1000.0)), Vector((0, 0, -1)))
-    return location.z if hit else 0.0
+    heights, z = [], 1000.0
+    while len(heights) < 64:
+        hit, location, *_ = bpy.context.scene.ray_cast(depsgraph, Vector((x, y, z)), Vector((0, 0, -1)))
+        if not hit:
+            break
+        heights.append(location.z)
+        z = location.z - 0.01
+    return heights
+
+
+def street_spawn(radius: float = 80.0, step: float = 4.0) -> tuple[float, float, float]:
+    """The open spot nearest the centre: open sky above, so on a street or
+    plaza rather than a roof or inside a building."""
+    points = [(x * step, y * step) for x in range(-int(radius / step), int(radius / step) + 1)
+              for y in range(-int(radius / step), int(radius / step) + 1)]
+    for x, y in sorted(points, key=lambda p: p[0] ** 2 + p[1] ** 2):
+        heights = _hits(x, y)
+        if len(heights) == 1 or (heights and heights[0] - heights[-1] < 0.5):
+            return x, y, heights[0] + 0.2
+    return 0.0, 0.0, (_hits(0.0, 0.0) or [0.0])[-1] + 0.2
 
 
 def main(argv):
@@ -162,7 +181,7 @@ def main(argv):
     area = json.loads(area_file.read_text())
     builder = Builder(export)
     counts = place(area, builder, conjugate)
-    studio.add_spawn((0.0, 0.0, ground_height(0.0, 0.0) + 0.2))
+    studio.add_spawn(street_spawn())
     bpy.ops.wm.save_as_mainfile(filepath=str(out))
     report = {
         "placements": len(area["placements"]), **counts,
