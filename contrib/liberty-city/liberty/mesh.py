@@ -43,6 +43,7 @@ class Part:
     positions: list[tuple[float, float, float]] = field(default_factory=list)
     normals: list[tuple[float, float, float]] = field(default_factory=list)
     uvs: list[tuple[float, float]] = field(default_factory=list)
+    alphas: list[float] = field(default_factory=list)  # vertex colour alpha, 0..1
     triangles: list[tuple[int, int, int]] = field(default_factory=list)
 
 
@@ -119,6 +120,8 @@ def parse_mesh(text: str) -> list[Part]:
                 continue
             part.positions.append(tuple(float(v) for v in groups[0][:3]))
             part.normals.append(tuple(float(v) for v in groups[1][:3]))
+            colour = groups[2]
+            part.alphas.append(float(colour[3]) / 255.0 if len(colour) >= 4 else 1.0)
             u, v = (float(x) for x in groups[4][:2])
             part.uvs.append((u, 1.0 - v))  # DirectX top-left origin to Blender bottom-left
     return parts
@@ -229,3 +232,13 @@ def read_fragment(oft_path: Path) -> tuple[Drawable, list[Part]]:
             part.normals = [_rotate(rotation, n) for n in part.normals]
             parts.append(part)
     return drawable, parts
+
+
+def drop_faded(part: Part, threshold: float = 0.5) -> Part:
+    """Keeps only the triangles whose corners' mean vertex alpha reaches the
+    threshold. GTA IV decal shaders fade by vertex alpha, which Studio cannot
+    draw, so the faded-out triangles would otherwise show as opaque patches."""
+    if part.alphas:
+        part.triangles = [t for t in part.triangles
+                          if max(t) < len(part.alphas) and sum(part.alphas[i] for i in t) / 3 >= threshold]
+    return part

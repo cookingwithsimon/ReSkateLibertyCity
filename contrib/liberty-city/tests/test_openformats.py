@@ -34,6 +34,12 @@ class Odr(unittest.TestCase):
         self.assertEqual(parts[0].positions[1], (2.0, -2.0, 0.0))
         self.assertEqual(parts[0].uvs[0], (0.0, 0.0))  # V flipped from 1
         self.assertEqual(parts[1].positions[0][2], 0.002)
+        self.assertEqual(parts[0].alphas[0], 1.0)
+
+    def test_drop_faded(self):
+        part = mesh.Part(0, positions=[(0, 0, 0)] * 4, alphas=[1.0, 1.0, 0.0, 0.0],
+                         triangles=[(0, 1, 2), (0, 2, 3)])
+        self.assertEqual(mesh.drop_faded(part).triangles, [(0, 1, 2)])
 
 
 class Fragment(unittest.TestCase):

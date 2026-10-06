@@ -89,6 +89,8 @@ class Builder:
             for part in parts:
                 if part.material < len(drawable.shaders):
                     shader = drawable.shaders[part.material]
+                    if "decal" in shader.name:
+                        ofmesh.drop_faded(part)
                     self.shaders[("solid " if surfaces.is_solid(shader.name) else "detail ") + shader.name] += 1
                     groups[surfaces.is_solid(shader.name)].append((part, self.material(odr, shader)))
             result = (self.mesh(name, groups[True]), self.mesh(name + "_detail", groups[False]))
