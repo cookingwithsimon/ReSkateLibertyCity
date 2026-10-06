@@ -160,12 +160,17 @@ def _hits(x: float, y: float) -> list[float]:
 
 def street_spawn(radius: float = 80.0, step: float = 4.0) -> tuple[float, float, float]:
     """The open spot nearest the centre: open sky above, so on a street or
-    plaza rather than a roof or inside a building."""
+    plaza rather than inside a building, and within 3 m of street level (the
+    10th percentile of top surfaces), since a roof with nothing modelled under
+    it is open sky too."""
     points = [(x * step, y * step) for x in range(-int(radius / step), int(radius / step) + 1)
               for y in range(-int(radius / step), int(radius / step) + 1)]
+    columns = {p: _hits(*p) for p in points}
+    tops = sorted(h[0] for h in columns.values() if h)
+    street = tops[len(tops) // 10] if tops else 0.0
     for x, y in sorted(points, key=lambda p: p[0] ** 2 + p[1] ** 2):
-        heights = _hits(x, y)
-        if len(heights) == 1 or (heights and heights[0] - heights[-1] < 0.5):
+        heights = columns[(x, y)]
+        if heights and heights[0] - heights[-1] < 0.5 and heights[0] - street < 3.0:
             return x, y, heights[0] + 0.2
     return 0.0, 0.0, (_hits(0.0, 0.0) or [0.0])[-1] + 0.2
 
