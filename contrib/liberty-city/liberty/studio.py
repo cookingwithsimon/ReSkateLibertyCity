@@ -9,20 +9,21 @@ from __future__ import annotations
 
 import bpy
 
-# Studio's native collision materials used by the converter (enum ids of
-# sk8_object.collision_material, from its collision_surface_catalog.json).
+# Studio's native collision materials used by the converter. The enum ids of
+# sk8_object.collision_material are `material_<packed>`, the MaterialDecl's
+# packed word (flags | material slot << 6 | property slot << 19), not row numbers.
 SURFACES = {
-    "default": "material_0000",
-    "concrete": "material_0001",
-    "asphalt": "material_0002",
-    "earth": "material_0003",
-    "glass": "material_0004",
-    "metal": "material_0005",
-    "marble": "material_0007",
-    "grass": "material_0009",
-    "brick": "material_0023",
-    "metal_rail": "material_0037",
-    "stairs": "material_0079",
+    "default": "material_0032",
+    "concrete": "material_0096",
+    "asphalt": "material_0160",
+    "metal": "material_0352",
+    "marble": "material_0480",
+    "grass": "material_0608",
+    "brick": "material_2016",
+    "glass": "material_2144",
+    "metal_rail": "material_2976",
+    "earth": "material_3488",
+    "stairs": "material_47186720",  # Concrete with the Stairs behaviour
 }
 
 
