@@ -65,10 +65,10 @@ class SelectArea(unittest.TestCase):
                 ((900, 900, 0), (0, 0, 0, 1), model_hash("bm_block01"), -1),  # outside
                 ((110, 210, 0), (0, 0, 0, 1), 0x1234, -1),  # unknown model
             ]))
-            out = select_area.select(d, (100, 200, 120, 220))
+            out = select_area.select(d, (100, 200, 120, 220), lod_parents=True)
         self.assertEqual([p["model"] for p in out["placements"]], ["bm_block01"])
         self.assertEqual(out["placements"][0]["position"], [-5.0, -5.0, 5.0])
-        self.assertEqual(out["unknown_hashes"], ["00001234"])
+        self.assertEqual(out["unknown_models"], ["00001234"])
 
 
 if __name__ == "__main__":

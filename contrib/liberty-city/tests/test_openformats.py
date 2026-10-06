@@ -50,8 +50,9 @@ class SelectFromOpl(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             out = select_area.select(fixtures.write(Path(d)), (0, 10, 30, 30))
         models = [p["model"] for p in out["placements"]]
-        # lod_test_slab is both a LOD model and the second slab's LOD parent; 500,500 is outside.
+        # lod_test_slab is a LOD model; 500,500 is outside.
         self.assertEqual(models, ["test_slab", "test_slab", "test_prop"])
+        self.assertEqual(out["skipped"], {"lod model": 1})
         self.assertEqual(out["placements"][0]["position"], [-5.0, 0.0, 1.0])
 
 
