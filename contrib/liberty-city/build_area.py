@@ -36,7 +36,7 @@ class Builder:
         self.missing = Counter()
 
     def texture(self, odr: Path, token: str | None):
-        if not token:
+        if not token or token.lower() == "null":  # OpenIV writes "null" for an unset slot
             return None
         path = odr.parent / token.replace("\\", "/")
         if not path.is_file():
