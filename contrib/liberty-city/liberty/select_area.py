@@ -2,10 +2,11 @@
 
     python -m liberty.select_area <export folder> --box minX minY maxX maxY [-o area.json]
 
-Reads every .wpl and .ide under the folder. LOD instances (those another
-instance points at as its LOD parent, and models the .ide marks as LOD) are
-left out: the converter wants the full-detail city. Positions are recentred on
-the box's centre, so the map sits near the origin.
+Reads every placement file under the folder: OpenIV's text .opl, or binary .wpl
+as extracted. Models the .ide files mark as low-detail stand-ins, and placements
+another one in the same file names as its LOD parent, are left out: the
+converter wants the full-detail city. Positions are recentred on the box's
+centre, so the map sits near the origin.
 """
 from __future__ import annotations
 
@@ -14,7 +15,16 @@ import json
 import sys
 from pathlib import Path
 
-from . import ide, wpl
+from . import ide, opl, wpl
+from .hashing import model_hash
+
+
+def _placements(folder: Path):
+    """(file name, [(position, rotation, model hash, lod index)])."""
+    for path in sorted(folder.rglob("*.opl")):
+        yield path.name, [(p.position, p.rotation, model_hash(p.model), p.lod_index) for p in opl.read(path)]
+    for path in sorted(folder.rglob("*.wpl")):
+        yield path.name, [(i.position, i.rotation, i.model_hash, i.lod_index) for i in wpl.read(path)]
 
 
 def select(folder: Path, box: tuple[float, float, float, float]):
@@ -22,22 +32,21 @@ def select(folder: Path, box: tuple[float, float, float, float]):
     x0, y0, x1, y1 = box
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
     placed, unknown = [], set()
-    for path in sorted(folder.rglob("*.wpl")):
-        instances = wpl.read(path)
-        parents = {i.lod_index for i in instances if i.lod_index >= 0}
-        for index, inst in enumerate(instances):
-            x, y, z = inst.position
+    for name, instances in _placements(folder):
+        parents = {lod for *_, lod in instances if 0 <= lod < len(instances)}
+        for index, (position, rotation, h, _) in enumerate(instances):
+            x, y, z = position
             if not (x0 <= x <= x1 and y0 <= y <= y1) or index in parents:
                 continue
-            model = models.get(inst.model_hash)
+            model = models.get(h)
             if model is None:
-                unknown.add(inst.model_hash)
+                unknown.add(h)
                 continue
             if model.is_lod:
                 continue
             placed.append({
-                "model": model.name, "txd": model.txd, "source": path.name,
-                "position": [x - cx, y - cy, z], "rotation": list(inst.rotation),
+                "model": model.name, "txd": model.txd, "source": name,
+                "position": [x - cx, y - cy, z], "rotation": list(rotation),
             })
     return {"centre": [cx, cy], "box": list(box), "placements": placed,
             "unknown_hashes": sorted(f"{h:08x}" for h in unknown)}

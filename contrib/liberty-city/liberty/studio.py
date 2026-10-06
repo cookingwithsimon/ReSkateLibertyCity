@@ -37,14 +37,23 @@ def set_collision(obj, mode: str = "triangle_mesh", surface: str | None = None) 
         obj["sk8_collision_mode"] = mode
 
 
-def set_material(mat, surface: str = "default", invisible: bool = False) -> None:
+# sk8_material.surface has its own, shorter list; the rest fall back to default.
+MATERIAL_SURFACES = {"concrete", "asphalt", "metal", "brick", "glass", "grass", "metal_rail"}
+
+
+def set_material(mat, surface: str = "default", invisible: bool = False, alpha: str = "auto") -> None:
+    """`surface` is a key of SURFACES; `alpha` is auto, opaque, mask or blend."""
+    look = surface if surface in MATERIAL_SURFACES else {"earth": "dirt"}.get(surface, "default")
     settings = getattr(mat, "sk8_material", None)
     if settings is not None:
-        settings.surface = surface
+        settings.surface = look
         settings.invisible = invisible
+        settings.alpha = alpha
+        if surface in SURFACES:
+            settings.collision_material = SURFACES[surface]
     else:
-        mat["sk8_surface"] = surface
-        mat["sk8_material"] = {"invisible": invisible}
+        mat["sk8_surface"] = look
+        mat["sk8_material"] = {"invisible": invisible, "alpha": alpha}
 
 
 def set_grind_curve(obj, radius: float = 0.03) -> None:

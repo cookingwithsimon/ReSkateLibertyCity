@@ -24,8 +24,9 @@ class ModelDef:
 
     @property
     def is_lod(self) -> bool:
-        n = self.name.lower()
-        return n.startswith(("lod", "slod")) or self.draw_distance > 300.0
+        # Low-detail stand-ins are named for it; big buildings legitimately
+        # have long draw distances, so distance alone is no sign.
+        return self.name.lower().startswith(("lod", "slod"))
 
 
 def parse(text: str) -> list[ModelDef]:
@@ -54,7 +55,8 @@ def parse(text: str) -> list[ModelDef]:
 
 
 def read_all(paths) -> dict[int, ModelDef]:
-    """Every model in `paths`, by model hash (what a .wpl refers to)."""
+    """Every model in `paths`, by model hash (what a .wpl refers to; hash the
+    lowercase name to look up an .opl's named placement)."""
     models = {}
     for p in paths:
         for m in parse(Path(p).read_text(encoding="latin-1")):
