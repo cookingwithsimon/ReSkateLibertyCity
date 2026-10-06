@@ -1,6 +1,6 @@
 """Lists the placements inside a box, resolved to model names.
 
-    python -m liberty.select_area <export folder> --box minX minY maxX maxY [-o area.json]
+    python -m liberty.select_area <export folder>... --box minX minY maxX maxY [-o area.json]
 
 Reads every placement file under the folder: OpenIV's text .opl, or binary .wpl
 as extracted. Models named as low-detail stand-ins (lod*, slod*) are left out:
@@ -20,23 +20,28 @@ from . import ide, opl, wpl
 from .hashing import model_hash
 
 
-def _placements(folder: Path):
+def _files(folders, pattern):
+    return sorted(p for f in folders for p in Path(f).rglob(pattern))
+
+
+def _placements(folders):
     """(file name, [(position, rotation, model hash, lod index, name or None)])."""
-    for path in sorted(folder.rglob("*.opl")):
+    for path in _files(folders, "*.opl"):
         yield path.name, [(p.position, p.rotation, model_hash(p.model), p.lod_index, p.model) for p in opl.read(path)]
-    for path in sorted(folder.rglob("*.wpl")):
+    for path in _files(folders, "*.wpl"):
         yield path.name, [(i.position, i.rotation, i.model_hash, i.lod_index, None) for i in wpl.read(path)]
 
 
-def select(folder: Path, box: tuple[float, float, float, float], lod_parents: bool = False):
+def select(folders, box: tuple[float, float, float, float], lod_parents: bool = False):
     """`lod_parents` also drops placements another one in the same file names
     as its LOD parent. Off by default: in OpenIV's split stream files the LOD
     index points into another file, so it would drop real buildings."""
-    models = ide.read_all(sorted(folder.rglob("*.ide")))
+    folders = [folders] if isinstance(folders, (str, Path)) else list(folders)
+    models = ide.read_all(_files(folders, "*.ide"))
     x0, y0, x1, y1 = box
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
     placed, unknown, skipped = [], set(), Counter()
-    for name, instances in _placements(folder):
+    for name, instances in _placements(folders):
         parents = {inst[3] for inst in instances if 0 <= inst[3] < len(instances)} if lod_parents else set()
         for index, (position, rotation, h, _, label) in enumerate(instances):
             x, y, z = position
@@ -63,12 +68,12 @@ def select(folder: Path, box: tuple[float, float, float, float], lod_parents: bo
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("folder", type=Path)
+    ap.add_argument("folders", type=Path, nargs="+", help="export folders, e.g. the map area and its prop archives")
     ap.add_argument("--box", type=float, nargs=4, required=True, metavar=("MINX", "MINY", "MAXX", "MAXY"))
     ap.add_argument("-o", "--output", type=Path)
     ap.add_argument("--lod-parents", action="store_true", help="also drop same-file LOD parents")
     args = ap.parse_args(argv)
-    result = select(args.folder, tuple(args.box), args.lod_parents)
+    result = select(args.folders, tuple(args.box), args.lod_parents)
     text = json.dumps(result, indent=1)
     if args.output:
         args.output.write_text(text)

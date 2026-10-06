@@ -1,8 +1,8 @@
 """Builds a Blender scene of one GTA IV area, ready for ReSkate Studio.
 
-    blender --background --python build_area.py -- <export folder> <area.json> <out.blend> [--no-conjugate]
+    blender --background --python build_area.py -- <export folders> <area.json> <out.blend> [--no-conjugate]
 
-<export folder> is OpenIV's openFormats export (the .odr files and the
+<export folders> (several joined with ";") is OpenIV's openFormats export (the .odr files and the
 subfolders beside them); <area.json> comes from `python -m liberty.select_area`.
 Each placed model becomes an object sharing one mesh per model. Its solid faces
 collide as an exact triangle mesh with a surface guessed from the texture;
@@ -27,10 +27,9 @@ from liberty import studio, surfaces  # noqa: E402
 
 
 class Builder:
-    def __init__(self, export: Path):
-        self.export = export
-        self.odrs = {p.stem.lower(): p for p in export.rglob("*.odr")}
-        self.textures = {p.stem.lower(): p for p in export.rglob("*.dds")}
+    def __init__(self, exports: list[Path]):
+        self.odrs = {p.stem.lower(): p for e in exports for p in e.rglob("*.odr")}
+        self.textures = {p.stem.lower(): p for e in exports for p in e.rglob("*.dds")}
         self.images: dict[Path, bpy.types.Image] = {}
         self.materials: dict[tuple, bpy.types.Material] = {}
         self.models: dict[str, tuple] = {}
@@ -176,7 +175,8 @@ def street_spawn(radius: float = 80.0, step: float = 4.0) -> tuple[float, float,
 
 
 def main(argv):
-    export, area_file, out = Path(argv[0]), Path(argv[1]), Path(argv[2]).resolve()
+    exports = [Path(p) for p in argv[0].split(";") if p]
+    area_file, out = Path(argv[1]), Path(argv[2]).resolve()
     conjugate = "--no-conjugate" not in argv
     bpy.ops.wm.read_factory_settings(use_empty=True)
     try:
@@ -184,7 +184,7 @@ def main(argv):
     except Exception:
         print("Skate Map add-on not enabled; writing plain sk8_* properties instead.")
     area = json.loads(area_file.read_text())
-    builder = Builder(export)
+    builder = Builder(exports)
     counts = place(area, builder, conjugate)
     studio.add_spawn(street_spawn())
     bpy.ops.wm.save_as_mainfile(filepath=str(out))

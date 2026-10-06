@@ -9,7 +9,7 @@ Pipeline: OpenIV export → `select_area` (placements in a box) → Blender scen
 (next) → `reskate_cli compile-map`.
 
 ```sh
-python -m liberty.select_area <export folder> --box minX minY maxX maxY -o area.json
+python -m liberty.select_area <export folder> [<props export>...] --box minX minY maxX maxY -o area.json
 python -m unittest discover -s tests
 ```
 
