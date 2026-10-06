@@ -70,6 +70,12 @@ class SelectFromOpl(unittest.TestCase):
         self.assertEqual(out["skipped"], {"lod model": 1})
         self.assertEqual(out["placements"][0]["position"], [-5.0, 0.0, 1.0])
 
+    def test_margin_marks_edge(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = select_area.select(fixtures.write(Path(d)), (0, 10, 12, 30), margin=5)
+        self.assertEqual([(p["model"], p["edge"]) for p in out["placements"]],
+                         [("test_slab", False), ("test_slab", True), ("test_prop", False)])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,7 +3,8 @@
     blender --background --python build_area.py -- <export folders> <area.json> <out.blend> [--no-conjugate]
 
 <export folders> (several joined with ";") is OpenIV's openFormats export (the .odr files and the
-subfolders beside them); <area.json> comes from `python -m liberty.select_area`.
+subfolders beside them); <area.json> comes from `python -m liberty.select_area`; its "edge" placements
+(just past the box) are built as solid shells only.
 Each placed model becomes an object sharing one mesh per model. Its solid faces
 collide as an exact triangle mesh with a surface guessed from the texture;
 decals, wires, foliage and glass are drawn with no collision. A spawn goes on
@@ -133,6 +134,11 @@ def place(area: dict, builder: Builder, conjugate: bool) -> Counter:
         if solid is None and detail is None:
             counts["skipped"] += 1
             continue
+        if p.get("edge"):  # past the box: keep building shells only, not their loose details
+            if solid is None:
+                counts["edge details dropped"] += 1
+                continue
+            detail = None
         if solid is None:
             counts["detail_only " + p["model"]] += 1
         x, y, z, w = p["rotation"]

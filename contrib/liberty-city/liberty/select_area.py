@@ -7,6 +7,11 @@ as extracted. Models named as low-detail stand-ins (lod*, slod*) are left out:
 the converter wants the full-detail city. Models no .ide in the folder defines
 are listed by name, so you know which other archives to export. Positions are recentred on the box's
 centre, so the map sits near the origin.
+
+Night-window overlays (NL_*, NW_*) are left out: they only light up at night and
+often belong to buildings outside the box. Placements up to --margin metres past
+the box are included marked "edge", so build_area can keep the building shells
+there (whose fire escapes and windows sit inside the box) and drop the rest.
 """
 from __future__ import annotations
 
@@ -18,6 +23,8 @@ from pathlib import Path
 
 from . import ide, opl, wpl
 from .hashing import model_hash
+
+NIGHT_OVERLAYS = ("nl_", "nw_")
 
 
 def _files(folders, pattern):
@@ -32,7 +39,7 @@ def _placements(folders):
         yield path.name, [(i.position, i.rotation, i.model_hash, i.lod_index, None) for i in wpl.read(path)]
 
 
-def select(folders, box: tuple[float, float, float, float], lod_parents: bool = False):
+def select(folders, box: tuple[float, float, float, float], lod_parents: bool = False, margin: float = 0.0):
     """`lod_parents` also drops placements another one in the same file names
     as its LOD parent. Off by default: in OpenIV's split stream files the LOD
     index points into another file, so it would drop real buildings."""
@@ -45,8 +52,9 @@ def select(folders, box: tuple[float, float, float, float], lod_parents: bool = 
         parents = {inst[3] for inst in instances if 0 <= inst[3] < len(instances)} if lod_parents else set()
         for index, (position, rotation, h, _, label) in enumerate(instances):
             x, y, z = position
-            if not (x0 <= x <= x1 and y0 <= y <= y1):
+            if not (x0 - margin <= x <= x1 + margin and y0 - margin <= y <= y1 + margin):
                 continue
+            edge = not (x0 <= x <= x1 and y0 <= y <= y1)
             if index in parents:
                 skipped["lod parent"] += 1
                 continue
@@ -58,9 +66,12 @@ def select(folders, box: tuple[float, float, float, float], lod_parents: bool = 
             if model.is_lod:
                 skipped["lod model"] += 1
                 continue
+            if model.name.lower().startswith(NIGHT_OVERLAYS):
+                skipped["night windows"] += 1
+                continue
             placed.append({
                 "model": model.name, "txd": model.txd, "source": name,
-                "position": [x - cx, y - cy, z], "rotation": list(rotation),
+                "position": [x - cx, y - cy, z], "rotation": list(rotation), "edge": edge,
             })
     return {"centre": [cx, cy], "box": list(box), "placements": placed, "skipped": dict(skipped),
             "unknown_models": sorted(unknown, key=str.lower)}
@@ -72,8 +83,9 @@ def main(argv=None) -> int:
     ap.add_argument("--box", type=float, nargs=4, required=True, metavar=("MINX", "MINY", "MAXX", "MAXY"))
     ap.add_argument("-o", "--output", type=Path)
     ap.add_argument("--lod-parents", action="store_true", help="also drop same-file LOD parents")
+    ap.add_argument("--margin", type=float, default=60.0, help="metres past the box to look for building shells")
     args = ap.parse_args(argv)
-    result = select(args.folders, tuple(args.box), args.lod_parents)
+    result = select(args.folders, tuple(args.box), args.lod_parents, args.margin)
     text = json.dumps(result, indent=1)
     if args.output:
         args.output.write_text(text)
