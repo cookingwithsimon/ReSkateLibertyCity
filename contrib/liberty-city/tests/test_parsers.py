@@ -41,6 +41,11 @@ class Wpl(unittest.TestCase):
         self.assertEqual(inst.model_hash, 0xDEADBEEF)
         self.assertEqual(inst.lod_index, -1)
 
+    def test_tcyc_records_are_44_bytes(self):
+        counts = [0, 0, 0, 0, 2] + [0] * 11
+        data = struct.pack("<17I", 3, *counts) + bytes(88)
+        self.assertEqual(wpl.parse(data), [])
+
     def test_truncated(self):
         with self.assertRaises(ValueError):
             wpl.parse(make_wpl([((0, 0, 0), (0, 0, 0, 1), 1, -1)])[:-4])
@@ -52,6 +57,14 @@ class Ide(unittest.TestCase):
         self.assertEqual([m.name for m in models], ["bm_block01", "lod_block01"])
         self.assertFalse(models[0].is_lod)
         self.assertTrue(models[1].is_lod)
+
+    def test_lod_names(self):
+        def named(n):
+            return ide.ModelDef(n, "t", 100, 0)
+        for n in ("SuperLOD02", "Tree_LOD_03_MH7", "DM_ScafLOD05_MH7", "LOD_Tudor_03_MH7"):
+            self.assertTrue(named(n).is_lod, n)
+        for n in ("explode_01_MH12", "CC_AptBase_MH7"):
+            self.assertFalse(named(n).is_lod, n)
 
 
 class SelectArea(unittest.TestCase):

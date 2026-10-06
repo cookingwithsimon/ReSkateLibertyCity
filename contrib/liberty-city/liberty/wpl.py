@@ -11,8 +11,10 @@ from pathlib import Path
 
 HEADER = struct.Struct("<17I")
 INST = struct.Struct("<7f2IiIf")
-# Record sizes for sections 0..15; the unused ones are always empty.
-RECORD_SIZES = (48, 0, 48, 56, 56, 0, 0, 0, 64, 388, 24, 0, 0, 0, 0, 132)
+# Record sizes for sections 0..15; the unused ones are always empty. TCYC is
+# 44 bytes in the shipped files (the wiki's 56 leaves every file 12 bytes per
+# TCYC record short).
+RECORD_SIZES = (48, 0, 48, 56, 44, 0, 0, 0, 64, 388, 24, 0, 0, 0, 0, 132)
 
 
 @dataclass(frozen=True)

@@ -24,9 +24,11 @@ class ModelDef:
 
     @property
     def is_lod(self) -> bool:
-        # Low-detail stand-ins are named for it; big buildings legitimately
-        # have long draw distances, so distance alone is no sign.
-        return self.name.lower().startswith(("lod", "slod"))
+        # Low-detail stand-ins carry "lod" anywhere in the name (LOD_Tudor_MH7,
+        # SuperLOD02, Tree_LOD_03_MH7, DM_ScafLOD05_MH7); "explode" is the only
+        # real model that does. Draw distance is no sign: big buildings have long ones.
+        name = self.name.lower()
+        return "lod" in name.replace("explod", "")
 
 
 def parse(text: str) -> list[ModelDef]:
