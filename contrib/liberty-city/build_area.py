@@ -36,6 +36,7 @@ class Builder:
         self.materials: dict[tuple, bpy.types.Material] = {}
         self.models: dict[str, tuple] = {}
         self.missing = Counter()
+        self.shaders = Counter()  # "solid gta_normal" / "detail gta_glass" -> parts
 
     def texture(self, odr: Path, token: str | None):
         if not token or token.lower() == "null":  # OpenIV writes "null" for an unset slot
@@ -87,6 +88,7 @@ class Builder:
             for part in parts:
                 if part.material < len(drawable.shaders):
                     shader = drawable.shaders[part.material]
+                    self.shaders[("solid " if surfaces.is_solid(shader.name) else "detail ") + shader.name] += 1
                     groups[surfaces.is_solid(shader.name)].append((part, self.material(odr, shader)))
             result = (self.mesh(name, groups[True]), self.mesh(name + "_detail", groups[False]))
         self.models[key] = result
@@ -131,6 +133,8 @@ def place(area: dict, builder: Builder, conjugate: bool) -> Counter:
         if solid is None and detail is None:
             counts["skipped"] += 1
             continue
+        if solid is None:
+            counts["detail_only " + p["model"]] += 1
         x, y, z, w = p["rotation"]
         rotation = Quaternion((w, -x, -y, -z) if conjugate else (w, x, y, z))
         for me, collide in ((solid, True), (detail, False)):
@@ -191,8 +195,12 @@ def main(argv):
     counts = place(area, builder, conjugate)
     studio.add_spawn(street_spawn())
     bpy.ops.wm.save_as_mainfile(filepath=str(out))
+    detail_only = Counter({k.split(" ", 1)[1]: v for k, v in counts.items() if k.startswith("detail_only ")})
+    counts = Counter({k: v for k, v in counts.items() if not k.startswith("detail_only ")})
     report = {
         "placements": len(area["placements"]), **counts,
+        "detail_only_total": sum(detail_only.values()), "detail_only_top": detail_only.most_common(40),
+        "shaders": builder.shaders.most_common(),
         "models": len(builder.models), "materials": len(builder.materials), "images": len(builder.images),
         "missing_top": builder.missing.most_common(25), "missing_total": sum(builder.missing.values()),
     }
