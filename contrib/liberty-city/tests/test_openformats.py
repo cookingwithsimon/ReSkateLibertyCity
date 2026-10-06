@@ -40,6 +40,8 @@ class Surfaces(unittest.TestCase):
     def test_rules(self):
         self.assertFalse(surfaces.is_solid("gta_decal"))
         self.assertTrue(surfaces.is_solid("gta_normal_spec"))
+        self.assertTrue(surfaces.is_solid("gta_normal_spec_reflect_emissivenight"))
+        self.assertFalse(surfaces.is_solid("gta_normal_reflect_alpha"))
         self.assertEqual(surfaces.surface_for("02ground_mh8\\dc_pavement_plainsmall01.dds"), "concrete")
         self.assertEqual(surfaces.surface_for("nj_road_tarmac01"), "asphalt")
         self.assertEqual(surfaces.surface_for("dc_curb_metalsmall02.dds"), "metal")

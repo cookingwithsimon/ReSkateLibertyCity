@@ -6,8 +6,9 @@ GTA surface id. Keys of liberty.studio.SURFACES.
 from __future__ import annotations
 
 # Shaders whose faces are never solid: decals sit 2 mm above a surface, wires
-# and foliage are cards. They are drawn but given no collision.
-NON_SOLID_SHADERS = ("decal", "wire", "tree", "glass", "emissive", "reflect_alpha", "alpha", "cutout", "cloth")
+# and foliage are cards. They are drawn but given no collision. "emissive" is not
+# here: emissivenight is the shader on most building walls (lit windows at night).
+NON_SOLID_SHADERS = ("decal", "wire", "tree", "glass", "alpha", "cutout", "cloth")
 
 TEXTURE_SURFACES = (
     (("road", "tarmac", "asphalt", "tar_"), "asphalt"),
