@@ -69,7 +69,9 @@ class Builder:
             mat.node_tree.links.new(node.outputs["Color"], bsdf.inputs["Base Color"])
             if cutout:
                 mat.node_tree.links.new(node.outputs["Alpha"], bsdf.inputs["Alpha"])
-        studio.set_material(mat, surfaces.surface_for(shader.diffuse), alpha="mask" if cutout else "auto")
+        # Decals carry soft worn edges in their alpha; a hard mask turns those into speckles.
+        alpha = ("blend" if "decal" in shader.name else "mask") if cutout else "auto"
+        studio.set_material(mat, surfaces.surface_for(shader.diffuse), alpha=alpha)
         self.materials[key] = mat
         return mat
 
