@@ -97,3 +97,65 @@ def write(root: Path) -> Path:
     (root / "test_slab.odr").write_text(ODR)
     (root / "test_slab" / "test_slab_high.mesh").write_text(MESH)
     return root
+
+
+OFT = """Version 112 2
+fragments
+{
+\tgroup test_lamp
+\t\tchild test_lamp\\base_0.child null
+\t\t\tchild test_lamp\\arm_1.child null
+}
+drawable
+{
+\tshadinggroup
+\t\tShaders 2
+\t\t\tgta_spec.sps test_metal 50.00000000 0.40000000 1.00000000;0.00000000;0.00000000 test_metal_s
+\t\t\tgta_emissivenight.sps test_bulb 0.00040000 35.00000000
+\tskel
+\tlodgroup
+\t\thigh none 0.00000000
+}
+"""
+
+SKEL = """Version 107 11
+NumBones 2
+bone test_lamp {
+\tIndex 0
+\tLocalOffset 0.0 0.0 0.0
+\tRotationQuaternion 0.0 0.0 0.0 1.0
+\tChildren 1
+\t{
+\t\tbone arm
+\t\t{
+\t\t\tIndex 1
+\t\t\tLocalOffset 0.0 0.0 3.0
+\t\t\tRotationQuaternion 0.0 0.0 0.7071068 0.7071068
+\t\t}
+\t}
+}
+"""
+
+
+def _child(name, bone):
+    return f"""Version 112 2
+drawable
+{{
+\tlodgroup
+\t{{
+\t\thigh 1 {name}\\{name}_high.mesh {bone} 9999.00000000
+\t\tmed none 9999.00000000
+\t}}
+}}
+"""
+
+
+def write_fragment(root: Path) -> Path:
+    folder = root / "test_lamp"
+    for name, bone in (("base_0", 0), ("arm_1", 1)):
+        (folder / name).mkdir(parents=True)
+        (folder / f"{name}.child").write_text(_child(name, bone))
+        (folder / name / f"{name}_high.mesh").write_text(MESH)
+    (folder / "test_lamp.skel").write_text(SKEL)
+    (root / "test_lamp.oft").write_text(OFT)
+    return root / "test_lamp.oft"

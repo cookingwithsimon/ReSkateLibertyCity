@@ -36,6 +36,19 @@ class Odr(unittest.TestCase):
         self.assertEqual(parts[1].positions[0][2], 0.002)
 
 
+class Fragment(unittest.TestCase):
+    def test_children_moved_by_bone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            drawable, parts = mesh.read_fragment(fixtures.write_fragment(Path(tmp)))
+        self.assertEqual([s.name for s in drawable.shaders], ["gta_spec", "gta_emissivenight"])
+        self.assertEqual(len(parts), 4)  # two Mtl blocks per child
+        self.assertEqual(parts[0].positions[1], (2.0, -2.0, 0.0))  # bone 0 is identity
+        x, y, z = parts[2].positions[1]  # (2, -2, 0) turned 90 degrees about Z, raised 3 m
+        self.assertAlmostEqual(x, 2.0, 5)
+        self.assertAlmostEqual(y, 2.0, 5)
+        self.assertAlmostEqual(z, 3.0, 5)
+
+
 class Surfaces(unittest.TestCase):
     def test_rules(self):
         self.assertFalse(surfaces.is_solid("gta_decal"))

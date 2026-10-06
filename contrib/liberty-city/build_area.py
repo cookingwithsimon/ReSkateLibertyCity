@@ -7,7 +7,8 @@ subfolders beside them); <area.json> comes from `python -m liberty.select_area`.
 Each placed model becomes an object sharing one mesh per model. Its solid faces
 collide as an exact triangle mesh with a surface guessed from the texture;
 decals, wires, foliage and glass are drawn with no collision. A spawn goes on
-the open street nearest the box's centre. Models with no .odr (props in other archives,
+the open street nearest the box's centre. Breakable props (.oft fragments) are
+built whole from their children. Models with neither (props in other archives,
 or ones packed in .odd dictionaries) are skipped and counted.
 
 GTA IV stores placement rotations as the inverse quaternion, so they are
@@ -28,7 +29,8 @@ from liberty import studio, surfaces  # noqa: E402
 
 class Builder:
     def __init__(self, exports: list[Path]):
-        self.odrs = {p.stem.lower(): p for e in exports for p in e.rglob("*.odr")}
+        self.odrs = {p.stem.lower(): p for e in exports for p in e.rglob("*.oft")}
+        self.odrs.update({p.stem.lower(): p for e in exports for p in e.rglob("*.odr")})
         self.textures = {p.stem.lower(): p for e in exports for p in e.rglob("*.dds")}
         self.images: dict[Path, bpy.types.Image] = {}
         self.materials: dict[tuple, bpy.types.Material] = {}
@@ -79,7 +81,8 @@ class Builder:
         if odr is None:
             self.missing["model " + name] += 1
         else:
-            drawable, parts = ofmesh.read_model(odr)
+            read = ofmesh.read_fragment if odr.suffix.lower() == ".oft" else ofmesh.read_model
+            drawable, parts = read(odr)
             groups = {True: [], False: []}
             for part in parts:
                 if part.material < len(drawable.shaders):
