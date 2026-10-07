@@ -35,6 +35,7 @@ class Shader:
 class Drawable:
     shaders: list[Shader]
     high_mesh: str | None  # path relative to the .odr's folder
+    med_mesh: str | None = None  # GTA IV's own medium-detail mesh, when it has one
 
 
 @dataclass
@@ -60,7 +61,7 @@ def _is_texture_token(token: str) -> bool:
 
 
 def parse_odr(text: str) -> Drawable:
-    shaders, high, in_shaders = [], None, False
+    shaders, meshes, in_shaders = [], {}, False
     for raw in text.splitlines():
         line = raw.strip()
         if line.startswith("Shaders"):
@@ -77,11 +78,10 @@ def parse_odr(text: str) -> Drawable:
                 textures = [t for t in tokens[1:] if _is_texture_token(t)]
                 shaders.append(Shader(tokens[0][:-4].lower(), textures))
             continue
-        if line.startswith("high "):
-            tokens = line.split()
-            if len(tokens) >= 3 and tokens[1] != "none":
-                high = tokens[2]
-    return Drawable(shaders, high)
+        tokens = line.split()
+        if len(tokens) >= 3 and tokens[0] in ("high", "med") and tokens[1] != "none":
+            meshes.setdefault(tokens[0], tokens[2])
+    return Drawable(shaders, meshes.get("high"), meshes.get("med"))
 
 
 def parse_mesh(text: str) -> list[Part]:
@@ -129,12 +129,14 @@ def parse_mesh(text: str) -> list[Part]:
     return parts
 
 
-def read_model(odr_path: Path) -> tuple[Drawable, list[Part]]:
+def read_model(odr_path: Path, med: bool = False) -> tuple[Drawable, list[Part]]:
+    """The full-detail mesh, or with `med` GTA IV's medium-detail one where the model has it."""
     odr_path = Path(odr_path)
     drawable = parse_odr(odr_path.read_text(encoding="latin-1"))
-    if not drawable.high_mesh:
+    chosen = (med and drawable.med_mesh) or drawable.high_mesh
+    if not chosen:
         return drawable, []
-    mesh_path = odr_path.parent / drawable.high_mesh.replace("\\", "/")
+    mesh_path = odr_path.parent / chosen.replace("\\", "/")
     if not mesh_path.is_file():
         return drawable, []
     return drawable, parse_mesh(mesh_path.read_text(encoding="latin-1"))
@@ -201,16 +203,18 @@ def parse_skel(text: str, key_by: str = "index") -> dict[int, tuple[tuple, tuple
     return bones
 
 
-def _child_mesh(text: str) -> tuple[str, int] | None:
+def _child_mesh(text: str, med: bool = False) -> tuple[str, int] | None:
+    found = {}
     for raw in text.splitlines():
         tokens = raw.split()
-        if len(tokens) >= 4 and tokens[0] == "high" and tokens[1] != "none":
-            return tokens[2], int(tokens[3])
-    return None
+        if len(tokens) >= 4 and tokens[0] in ("high", "med") and tokens[1] != "none":
+            found.setdefault(tokens[0], (tokens[2], int(tokens[3])))
+    return (med and found.get("med")) or found.get("high")
 
 
-def read_fragment(oft_path: Path) -> tuple[Drawable, list[Part]]:
-    """Every child's high mesh, moved from its bone into fragment space."""
+def read_fragment(oft_path: Path, med: bool = False) -> tuple[Drawable, list[Part]]:
+    """Every child's high (or with `med`, medium where it has one) mesh, moved from
+    its bone into fragment space."""
     oft_path = Path(oft_path)
     text = oft_path.read_text(encoding="latin-1")
     drawable = parse_odr(text[text.find("drawable"):] if "drawable" in text else "")
@@ -225,7 +229,7 @@ def read_fragment(oft_path: Path) -> tuple[Drawable, list[Part]]:
         child = folder / tokens[1].replace("\\", "/")
         if not child.is_file():
             continue
-        found = _child_mesh(child.read_text(encoding="latin-1"))
+        found = _child_mesh(child.read_text(encoding="latin-1"), med)
         if found is None:
             continue
         mesh_path = child.parent / found[0].replace("\\", "/")

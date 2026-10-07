@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import fixtures  # noqa: E402
-from liberty import mesh, opl, select_area, surfaces, tri_report  # noqa: E402
+from liberty import lean, mesh, opl, select_area, surfaces, tri_report  # noqa: E402
 
 
 class Opl(unittest.TestCase):
@@ -136,6 +136,37 @@ class TriReport(unittest.TestCase):
         # The edge copy keeps its solid slab and loses the decal on top.
         self.assertLess(two["breakdown"]["place"]["edge"], slab["each"])
         self.assertEqual(two["breakdown"]["place"]["edge"], one["breakdown"]["kind"]["solid"] // 2)
+
+
+class Lean(unittest.TestCase):
+    def test_medium_mesh_when_asked_and_present(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = fixtures.write(Path(d))
+            odr = root / "test_slab.odr"
+            high = mesh.read_model(odr)[1]
+            self.assertEqual(len(mesh.read_model(odr, med=True)[1]), len(high))  # no med mesh: high
+            (root / "test_slab" / "test_slab_med.mesh").write_text(fixtures.MESH.split("Mtl 1")[0] + "}\n")
+            odr.write_text(fixtures.ODR.replace("med none 9999.00000000", "med 1 test_slab\\test_slab_med.mesh 0 60.0"))
+            self.assertEqual(mesh.parse_odr(odr.read_text()).med_mesh, "test_slab\\test_slab_med.mesh")
+            self.assertLess(len(mesh.read_model(odr, med=True)[1]), len(high))
+            self.assertEqual(len(mesh.read_model(odr)[1]), len(high))
+
+    def test_which_models(self):
+        self.assertTrue(lean.use_med("W_Birch_MD_INGAME"))
+        self.assertTrue(lean.use_med("CJ_aircon7"))
+        self.assertTrue(lean.use_med("anything", ["gta_trees"]))
+        for name in ("CJ_GB_bench_3", "CJ_FENCE_16_1", "BM_NYlamp1", "BM_streetlamp", "Fire_Esc_8b"):
+            self.assertFalse(lean.use_med(name, ["gta_normal_spec"]), name)
+
+    def test_edge_furniture_dropped(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = fixtures.write(Path(d))
+            edge = select_area.select(root, (0, 10, 12, 30), margin=5)
+            full = tri_report.report([root], edge)
+            leaner = tri_report.report([root], edge, lean=True)
+        self.assertIn("edge", full["breakdown"]["place"])
+        self.assertNotIn("edge", leaner["breakdown"]["place"])  # a 4 m slab is not a shell
+        self.assertEqual(leaner["triangles"], full["breakdown"]["place"]["inside"])
 
 
 if __name__ == "__main__":

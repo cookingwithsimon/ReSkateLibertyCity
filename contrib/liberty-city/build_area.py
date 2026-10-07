@@ -2,7 +2,7 @@
 
     blender --background --python build_area.py -- <export folders> <area.json> <out.blend> [--no-conjugate]
         [--no-lights] [--max-lights N] [--light-energy SCALE] [--sign-lights] [--vertex-shading]
-        [--spawn X Y Z HEADING]
+        [--spawn X Y Z HEADING] [--lean]
 
 <export folders> (several joined with ";") is OpenIV's openFormats export (the .odr files and the
 subfolders beside them); <area.json> comes from `python -m liberty.select_area`; its "edge" placements
@@ -30,6 +30,8 @@ per bulb cluster (not scaled by --light-energy).
 billboard/poster texture, of 6 m² or more (the largest 600), facing out and coloured by
 its texture's average.
 --vertex-shading is experimental: Studio's procedural bake of it comes out black.
+--lean builds foliage and wall clutter from GTA IV's medium-detail meshes and keeps only
+building-sized models past the box (see liberty/lean.py).
 """
 import json
 import sys
@@ -44,6 +46,7 @@ from mathutils import Matrix, Quaternion, Vector
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from liberty import dds  # noqa: E402
 from liberty import emissive  # noqa: E402
+from liberty import lean as oflean  # noqa: E402
 from liberty import lights as oflights  # noqa: E402
 from liberty import mesh as ofmesh  # noqa: E402
 from liberty import studio, surfaces  # noqa: E402
@@ -63,8 +66,11 @@ MAX_SIGN_LIGHTS = 600
 
 
 class Builder:
-    def __init__(self, exports: list[Path], vertex_shading: bool = False):
+    def __init__(self, exports: list[Path], vertex_shading: bool = False, lean: bool = False):
         self.vertex_shading = vertex_shading  # multiply GTA IV's baked vertex colour into the base colour
+        self.lean = lean
+        self.sizes: dict[str, float] = {}  # model -> largest extent in metres
+        self.medium = 0  # models built from their medium-detail mesh
         self.odrs = {p.stem.lower(): p for e in exports for p in e.rglob("*.oft")}
         self.odrs.update({p.stem.lower(): p for e in exports for p in e.rglob("*.odr")})
         self.textures = {p.stem.lower(): p for e in exports for p in e.rglob("*.dds")}
@@ -138,7 +144,10 @@ class Builder:
             self.missing["model " + name] += 1
         else:
             read = ofmesh.read_fragment if odr.suffix.lower() == ".oft" else ofmesh.read_model
-            drawable, parts = read(odr)
+            med = self.lean and oflean.wants_med(odr, name)
+            self.medium += med
+            drawable, parts = read(odr, med)
+            self.sizes[key] = oflean.size(parts)
             self.emitters[key] = self.find_emitters(odr, drawable, parts)
             groups = {True: [], False: []}
             for part in parts:
@@ -267,6 +276,9 @@ def place(area: dict, builder: Builder, conjugate: bool) -> Counter:
         if p.get("edge"):  # past the box: keep building shells only, not their loose details
             if solid is None:
                 counts["edge details dropped"] += 1
+                continue
+            if builder.lean and not oflean.keep_edge(builder.sizes.get(p["model"].lower(), 0.0)):
+                counts["edge furniture dropped"] += 1
                 continue
             detail = None
         if solid is None:
@@ -426,7 +438,7 @@ def main(argv):
     except Exception:
         print("Skate Map add-on not enabled; writing plain sk8_* properties instead.")
     area = json.loads(area_file.read_text())
-    builder = Builder(exports, vertex_shading="--vertex-shading" in argv)
+    builder = Builder(exports, vertex_shading="--vertex-shading" in argv, lean="--lean" in argv)
     counts = place(area, builder, conjugate)
     if "--spawn" in argv:
         # GTA IV world x y z and the in-game heading (ReSkate's trainer shows both).
@@ -454,7 +466,7 @@ def main(argv):
         "placements": len(area["placements"]), **counts,
         "detail_only_total": sum(detail_only.values()), "detail_only_top": detail_only.most_common(40),
         "shaders": builder.shaders.most_common(),
-        "models": len(builder.models), "materials": len(builder.materials), "images": len(builder.images),
+        "models": len(builder.models), "medium_detail_models": builder.medium, "materials": len(builder.materials), "images": len(builder.images),
         "missing_top": builder.missing.most_common(25), "missing_total": sum(builder.missing.values()),
     }
     out.with_suffix(".report.json").write_text(json.dumps(report, indent=1))

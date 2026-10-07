@@ -1,11 +1,12 @@
 """Where an area's triangles go, to see what is worth cutting.
 
-    python -m liberty.tri_report <export folder>... --area area.json [--top 40] [-o report.json]
+    python -m liberty.tri_report <export folder>... --area area.json [--top 40] [--lean] [-o report.json]
 
 Counts each placed model's full-detail triangles (as build_area builds them)
 times its placements, split by: inside the box or edge shell, solid (collides)
 or detail (drawn only), shader, export folder, and model. Small models are
-grouped by size so many tiny props show up as one line. No Blender needed.
+grouped by size so many tiny props show up as one line. --lean counts what
+build_area --lean would build. No Blender needed.
 """
 from __future__ import annotations
 
@@ -16,7 +17,7 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from . import mesh, surfaces
+from . import lean as oflean, mesh, surfaces
 
 SIZE_BINS = (1, 2, 5, 10, 20, 50, 1e9)  # metres: the model's largest extent
 
@@ -27,10 +28,10 @@ def _models(folders):
     return found
 
 
-def _measure(path: Path) -> dict:
+def _measure(path: Path, med: bool = False) -> dict:
     """Triangles per shader, split solid/detail, and the model's size."""
     read = mesh.read_fragment if path.suffix.lower() == ".oft" else mesh.read_model
-    drawable, parts = read(path)
+    drawable, parts = read(path, med)
     out = {"solid": 0, "detail": 0, "shaders": Counter(), "size": 0.0}
     lo, hi = [math.inf] * 3, [-math.inf] * 3
     for part in parts:
@@ -53,7 +54,7 @@ def _measure(path: Path) -> dict:
     return out
 
 
-def report(folders, area: dict, top: int = 40) -> dict:
+def report(folders, area: dict, top: int = 40, lean: bool = False) -> dict:
     files = _models(folders)
     measured: dict[str, dict] = {}
     by = defaultdict(Counter)
@@ -65,11 +66,13 @@ def report(folders, area: dict, top: int = 40) -> dict:
             by["missing"][p["model"]] += 1
             continue
         if key not in measured:
-            measured[key] = _measure(files[key])
+            measured[key] = _measure(files[key], lean and oflean.wants_med(files[key], p["model"]))
         m = measured[key]
         edge = bool(p.get("edge"))
         if edge and not m["solid"]:
             continue  # build_area drops edge placements with nothing solid
+        if edge and lean and not oflean.keep_edge(m["size"]):
+            continue
         solid, detail = m["solid"], 0 if edge else m["detail"]
         total = solid + detail
         place = "edge" if edge else "inside"
@@ -103,9 +106,10 @@ def main(argv=None) -> int:
     ap.add_argument("folders", type=Path, nargs="+")
     ap.add_argument("--area", type=Path, required=True)
     ap.add_argument("--top", type=int, default=40)
+    ap.add_argument("--lean", action="store_true", help="count what build_area --lean builds")
     ap.add_argument("-o", "--output", type=Path)
     args = ap.parse_args(argv)
-    result = report(args.folders, json.loads(args.area.read_text()), args.top)
+    result = report(args.folders, json.loads(args.area.read_text()), args.top, args.lean)
     text = json.dumps(result, indent=1)
     if args.output:
         args.output.write_text(text)
