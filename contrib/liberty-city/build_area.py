@@ -34,6 +34,7 @@ import bpy
 from mathutils import Quaternion, Vector
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from liberty import dds  # noqa: E402
 from liberty import lights as oflights  # noqa: E402
 from liberty import mesh as ofmesh  # noqa: E402
 from liberty import studio, surfaces  # noqa: E402
@@ -53,6 +54,7 @@ class Builder:
         self.materials: dict[tuple, bpy.types.Material] = {}
         self.models: dict[str, tuple] = {}
         self.lights: dict[str, list] = {}
+        self.opaque: dict[Path, bool] = {}
         self.missing = Counter()
         self.shaders = Counter()  # "solid gta_normal" / "detail gta_glass" -> parts
 
@@ -123,12 +125,25 @@ class Builder:
                     shader = drawable.shaders[part.material]
                     if "decal" in shader.name:
                         ofmesh.drop_faded(part)
-                    solid = surfaces.is_solid(shader.name, shader.diffuse)
+                    solid = surfaces.is_solid(shader.name, shader.diffuse) or self.opaque_part(odr, shader)
                     self.shaders[("solid " if solid else "detail ") + shader.name] += 1
                     groups[solid].append((part, self.material(odr, shader)))
             result = (self.mesh(name, groups[True]), self.mesh(name + "_detail", groups[False]))
         self.models[key] = result
         return result
+
+    def opaque_part(self, odr: Path, shader: ofmesh.Shader) -> bool:
+        """An alpha or cutout part whose texture has no transparency: solid geometry."""
+        if not shader.diffuse or not surfaces.opaque_alpha_is_solid(shader.name, shader.diffuse):
+            return False
+        path = odr.parent / shader.diffuse.replace("\\", "/")
+        if not path.is_file():
+            path = self.textures.get(Path(shader.diffuse.replace("\\", "/")).stem.lower())
+        if path is None:
+            return False
+        if path not in self.opaque:
+            self.opaque[path] = dds.is_opaque(path)
+        return self.opaque[path]
 
     def model_lights(self, name: str) -> list:
         key = name.lower()

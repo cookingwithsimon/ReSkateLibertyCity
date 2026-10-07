@@ -69,6 +69,14 @@ class Surfaces(unittest.TestCase):
         self.assertFalse(surfaces.is_solid("gta_alpha", "cistillwglascistillwglas_a"))
         self.assertFalse(surfaces.is_solid("gta_decal", "rail_decal"))
 
+    def test_opaque_alpha_parts_are_solid_unless_overlays(self):
+        self.assertTrue(surfaces.opaque_alpha_is_solid("gta_alpha", "cj_green_grenade2"))
+        self.assertFalse(surfaces.opaque_alpha_is_solid("gta_emissivenight_alpha", "sprunk01_c"))
+        self.assertFalse(surfaces.opaque_alpha_is_solid("gta_alpha", "darkbrownmud256"))
+        self.assertFalse(surfaces.opaque_alpha_is_solid("gta_cutout", "ec_barbwire2"))
+        self.assertFalse(surfaces.opaque_alpha_is_solid("gta_normal_spec", "anything"))
+        self.assertEqual(surfaces.surface_for("cj_green_grenade2"), "metal_rail_round")
+
     def test_rails_grind_as_smooth_metal_rail(self):
         self.assertEqual(surfaces.surface_for(r"x\sl_rustedmtl_rail01sl_rustedmtl_rail01a.dds"), "metal_rail_round")
         self.assertEqual(surfaces.surface_for("sl_tainohandrail_01"), "metal_rail_round")

@@ -19,7 +19,9 @@ TEXTURE_SURFACES = (
     (("glass", "window", "win_"), "glass"),
     # Handrails and railings grind as smooth metal rail (the station's queue and platform
     # rails, sl_rustedmtl_rail01); "trail" and the track bed ("tracks") are not rails.
-    (("handrail", "railing", "_rail", "rail_", "rail0", "railks"), "metal_rail_round"),
+    # cj_green_grenade2 is the green paint of the railings and fire escapes (Hove Beach
+    # station's ticket-hall queue rails, og_BS3blk07station03).
+    (("handrail", "railing", "_rail", "rail_", "rail0", "railks", "green_grenade"), "metal_rail_round"),
     (("rail", "metal", "steel", "iron", "grate", "grill"), "metal"),
 )
 
@@ -32,6 +34,22 @@ SOLID_CUTOUT_TEXTURES = ("rail", "fence", "grate", "grill", "mesh", "msh", "meta
                          "gate", "cage", "balcon", "ladder", "stair", "fire_esc", "fireesc", "scaff")
 FOLIAGE_TEXTURES = ("leaf", "leaves", "tree", "bush", "ivy", "plant", "hedge", "flower", "grass",
                     "foliage", "branch", "fern", "vine")
+
+
+# Alpha and cutout parts whose texture has no transparency at all are solid geometry
+# drawn with a see-through shader (the station's queue rails use gta_alpha with an
+# opaque DXT1 paint). Emissive ones are signs and lit windows laid on walls, and
+# ground overlays would only double the surface under them, so neither collides.
+OVERLAY_TEXTURES = ("mud", "dirt", "grime", "stain", "puddle", "shadow", "wire", "leak", "graf")
+
+
+def opaque_alpha_is_solid(shader: str, texture: str | None) -> bool:
+    if "emissive" in shader or not ("alpha" in shader or "cutout" in shader):
+        return False
+    if any(word in shader for word in ("decal", "glass", "tree", "wire", "cloth")):
+        return False
+    name = (texture or "").lower().rsplit("\\", 1)[-1]
+    return not any(w in name for w in OVERLAY_TEXTURES + FOLIAGE_TEXTURES)
 
 
 def is_solid(shader: str, texture: str | None = None) -> bool:
