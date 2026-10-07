@@ -1,8 +1,11 @@
-"""Plain-text GTA IV model definitions (.ide): the `objs` and `tobj` sections.
+"""Plain-text GTA IV model definitions (.ide): the `objs`, `tobj`, `anim` and
+`tanm` sections.
 
-Each row starts `name, texture dictionary, draw distance, flags...`; the rest
-(bounds, and the drawable dictionary for models packed in a .wdd) varies, so it
-is kept raw.
+Each row starts `name, texture dictionary, draw distance, flags...`; `anim` and
+`tanm` rows (animated models: Star Junction's billboards and hotels, flags,
+flash bulbs) carry their animation dictionary third, before the draw distance.
+The rest (bounds, and the drawable dictionary for models packed in a .wdd)
+varies, so it is kept raw.
 """
 from __future__ import annotations
 
@@ -11,7 +14,8 @@ from pathlib import Path
 
 from .hashing import model_hash
 
-SECTIONS = {"objs", "tobj"}
+SECTIONS = {"objs", "tobj", "anim", "tanm"}
+ANIMATED = {"anim", "tanm"}  # an animation dictionary column follows the txd
 
 
 @dataclass(frozen=True)
@@ -47,6 +51,8 @@ def parse(text: str) -> list[ModelDef]:
         if section not in SECTIONS:
             continue
         cols = [c.strip() for c in line.split(",")]
+        if section in ANIMATED:
+            cols = cols[:2] + cols[3:]
         if len(cols) < 4:
             continue
         try:

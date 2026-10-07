@@ -58,6 +58,12 @@ class Ide(unittest.TestCase):
         self.assertFalse(models[0].is_lod)
         self.assertTrue(models[1].is_lod)
 
+    def test_anim_rows_skip_the_animation_dictionary(self):
+        models = ide.parse("anim\nTS_ATower_DC9, TS_Building05c_DC9, manhat09, 100, 1536, 0, -37.7, -28.6\nend\n")
+        self.assertEqual(len(models), 1)
+        self.assertEqual((models[0].name, models[0].txd, models[0].draw_distance, models[0].flags),
+                         ("TS_ATower_DC9", "TS_Building05c_DC9", 100.0, 1536))
+
     def test_lod_names(self):
         def named(n):
             return ide.ModelDef(n, "t", 100, 0)
