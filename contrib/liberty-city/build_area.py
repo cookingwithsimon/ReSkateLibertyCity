@@ -2,7 +2,7 @@
 
     blender --background --python build_area.py -- <export folders> <area.json> <out.blend> [--no-conjugate]
         [--no-lights] [--max-lights N] [--light-energy SCALE] [--sign-lights] [--vertex-shading]
-        [--spawn X Y Z HEADING] [--lean]
+        [--spawn X Y Z HEADING] [--lean] [--flood X Y Z RADIUS]...
 
 <export folders> (several joined with ";") is OpenIV's openFormats export (the .odr files and the
 subfolders beside them); <area.json> comes from `python -m liberty.select_area`; its "edge" placements
@@ -30,6 +30,9 @@ per bulb cluster (not scaled by --light-energy).
 billboard/poster texture, of 6 m² or more (the largest 600), facing out and coloured by
 its texture's average.
 --vertex-shading is experimental: Studio's procedural bake of it comes out black.
+--flood (repeatable) lights an area for skating: soft overhead lights every FLOOD_SPACING m within
+RADIUS of GTA IV x y, 6 m above the ground near height Z (so under a bridge or freeway they hang
+below the deck), on in the evening and at night like the rest.
 --lean builds foliage and wall clutter from GTA IV's medium-detail meshes and keeps only
 building-sized models past the box (see liberty/lean.py).
 """
@@ -63,6 +66,10 @@ LAMP_WATTS = 40.0  # per bulb, for bulbs of models with no .light
 STREET_LAMP_CONE = 120.0  # degrees, at least
 STREET_LAMP_REACH = 1.5  # times the GTA range, and at least 20 m
 MAX_SIGN_LIGHTS = 600
+FLOOD_SPACING = 12.0  # m between --flood lights
+FLOOD_HEIGHT = 6.0  # m above the ground
+FLOOD_WATTS = 150.0
+FLOOD_REACH = 18.0  # m
 
 
 class Builder:
@@ -398,6 +405,39 @@ def add_emitter_lights(area: dict, builder: Builder, conjugate: bool, energy: fl
     return counts
 
 
+def add_flood(cx: float, cy: float, ground: float, radius: float, tag: int = 0) -> int:
+    """Overhead lights on a FLOOD_SPACING grid within `radius` of (cx, cy), scene
+    coordinates. Each hangs FLOOD_HEIGHT above the highest surface within 3 m of
+    `ground`, or just under whatever is overhead if that is lower."""
+    root = bpy.context.scene.collection
+    steps = int(radius // FLOOD_SPACING)
+    made = 0
+    for i in range(-steps, steps + 1):
+        for j in range(-steps, steps + 1):
+            x, y = cx + i * FLOOD_SPACING, cy + j * FLOOD_SPACING
+            if (x - cx) ** 2 + (y - cy) ** 2 > radius ** 2:
+                continue
+            heights = _hits(x, y)
+            floor = next((h for h in heights if h <= ground + 3.0), None)
+            if floor is None or floor < ground - 6.0:
+                continue  # nothing to light near that height here
+            above = [h for h in heights if h > floor + 0.5]
+            z = floor + FLOOD_HEIGHT
+            if above and above[-1] - 0.5 < z:
+                z = max(floor + 2.5, above[-1] - 0.5)
+            data = bpy.data.lights.new(f"flood_{tag}_{made}", "POINT")
+            data.color = (1.0, 0.93, 0.8)
+            data.energy = FLOOD_WATTS
+            data.shadow_soft_size = 1.0
+            data.use_shadow = False
+            obj = bpy.data.objects.new(data.name, data)
+            obj.location = (x, y, z)
+            root.objects.link(obj)
+            studio.set_light(obj, FLOOD_REACH, LIGHT_TIMES)
+            made += 1
+    return made
+
+
 def _hits(x: float, y: float) -> list[float]:
     """Heights of every surface straight down at (x, y), top first."""
     depsgraph = bpy.context.evaluated_depsgraph_get()
@@ -453,6 +493,10 @@ def main(argv):
         studio.add_spawn((x - cx, y - cy, ground), yaw_degrees=180.0 - heading)
     else:
         studio.add_spawn(street_spawn())
+    for n, i in enumerate(k for k, a in enumerate(argv) if a == "--flood"):
+        x, y, z, radius = (float(v) for v in argv[i + 1:i + 5])
+        cx, cy = area["centre"]
+        counts["flood_lights"] += add_flood(x - cx, y - cy, z, radius, n)
     if "--no-lights" not in argv:
         limit = int(argv[argv.index("--max-lights") + 1]) if "--max-lights" in argv else 4000
         energy = float(argv[argv.index("--light-energy") + 1]) if "--light-energy" in argv else 1.0
