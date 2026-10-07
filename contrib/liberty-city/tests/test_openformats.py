@@ -61,6 +61,13 @@ class Surfaces(unittest.TestCase):
         self.assertTrue(surfaces.is_solid("gta_normal_spec"))
         self.assertTrue(surfaces.is_solid("gta_normal_spec_reflect_emissivenight"))
         self.assertFalse(surfaces.is_solid("gta_normal_reflect_alpha"))
+
+    def test_cutout_railings_collide_but_foliage_does_not(self):
+        self.assertTrue(surfaces.is_solid("gta_cutout", r"x\rustedmtl_rail01sl_rustedmtl_rail01a.dds"))
+        self.assertTrue(surfaces.is_solid("gta_cutout", "pris_fence2pris_fence2b"))
+        self.assertFalse(surfaces.is_solid("gta_cutout", "ag_liveoak_leafag_liveoak_leaf_alpha"))
+        self.assertFalse(surfaces.is_solid("gta_alpha", "cistillwglascistillwglas_a"))
+        self.assertFalse(surfaces.is_solid("gta_decal", "rail_decal"))
         self.assertEqual(surfaces.surface_for("02ground_mh8\\dc_pavement_plainsmall01.dds"), "concrete")
         self.assertEqual(surfaces.surface_for("nj_road_tarmac01"), "asphalt")
         self.assertEqual(surfaces.surface_for("dc_curb_metalsmall02.dds"), "metal")

@@ -123,8 +123,9 @@ class Builder:
                     shader = drawable.shaders[part.material]
                     if "decal" in shader.name:
                         ofmesh.drop_faded(part)
-                    self.shaders[("solid " if surfaces.is_solid(shader.name) else "detail ") + shader.name] += 1
-                    groups[surfaces.is_solid(shader.name)].append((part, self.material(odr, shader)))
+                    solid = surfaces.is_solid(shader.name, shader.diffuse)
+                    self.shaders[("solid " if solid else "detail ") + shader.name] += 1
+                    groups[solid].append((part, self.material(odr, shader)))
             result = (self.mesh(name, groups[True]), self.mesh(name + "_detail", groups[False]))
         self.models[key] = result
         return result

@@ -21,8 +21,24 @@ TEXTURE_SURFACES = (
 )
 
 
-def is_solid(shader: str) -> bool:
-    return not any(word in shader for word in NON_SOLID_SHADERS)
+# Cutout and alpha shaders also draw solid things with holes in them: railings,
+# grates, chain-link and the station's queue rails (og_BS3blk07station01 draws
+# them with gta_cutout). Those collide when the texture says what they are;
+# foliage stays a card.
+SOLID_CUTOUT_TEXTURES = ("rail", "fence", "grate", "grill", "mesh", "msh", "metal", "mtl", "barrier",
+                         "gate", "cage", "balcon", "ladder", "stair", "fire_esc", "fireesc", "scaff")
+FOLIAGE_TEXTURES = ("leaf", "leaves", "tree", "bush", "ivy", "plant", "hedge", "flower", "grass",
+                    "foliage", "branch", "fern", "vine")
+
+
+def is_solid(shader: str, texture: str | None = None) -> bool:
+    """Whether faces with this shader (and diffuse texture) collide."""
+    if not any(word in shader for word in NON_SOLID_SHADERS):
+        return True
+    if texture and ("cutout" in shader or "alpha" in shader) and "decal" not in shader:
+        name = texture.lower().rsplit("\\", 1)[-1]
+        return any(w in name for w in SOLID_CUTOUT_TEXTURES) and not any(w in name for w in FOLIAGE_TEXTURES)
+    return False
 
 
 def surface_for(texture: str | None) -> str:
