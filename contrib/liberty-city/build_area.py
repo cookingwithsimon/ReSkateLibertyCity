@@ -1,7 +1,7 @@
 """Builds a Blender scene of one GTA IV area, ready for ReSkate Studio.
 
     blender --background --python build_area.py -- <export folders> <area.json> <out.blend> [--no-conjugate]
-        [--no-lights] [--max-lights N] [--vertex-shading]
+        [--no-lights] [--max-lights N] [--light-energy W_PER_M2] [--vertex-shading]
 
 <export folders> (several joined with ";") is OpenIV's openFormats export (the .odr files and the
 subfolders beside them); <area.json> comes from `python -m liberty.select_area`; its "edge" placements
@@ -20,6 +20,8 @@ Each placed model's GTA IV lights (its .light: street lamps, signs, shop and
 window lights) become Blender point and spot lights that the Skate Map add-on
 exports, lit in the evening and at night only and without shadows. --max-lights
 keeps the longest-reaching ones (default 4000); --no-lights leaves them out.
+A light gets --light-energy watts (default 1) per square metre of its range.
+--vertex-shading is experimental: Studio's procedural bake of it comes out black.
 """
 import json
 import sys
@@ -198,7 +200,7 @@ def place(area: dict, builder: Builder, conjugate: bool) -> Counter:
     return counts
 
 
-def add_lights(area: dict, builder: Builder, conjugate: bool, limit: int) -> Counter:
+def add_lights(area: dict, builder: Builder, conjugate: bool, limit: int, energy: float = 1.0) -> Counter:
     """Every placed model's GTA IV lights as Blender lights, the longest-reaching
     `limit` of them. Edge placements are past the box and bring no lights."""
     wanted = []
@@ -215,8 +217,9 @@ def add_lights(area: dict, builder: Builder, conjugate: bool, limit: int) -> Cou
     for i, (light, rotation, origin) in enumerate(wanted[:limit]):
         data = bpy.data.lights.new(f"gta_light_{i}", "SPOT" if light.spot else "POINT")
         data.color = light.color
-        # Watts that reach usefully across the GTA range; _f28 is 100 for most lights.
-        data.energy = 10.0 * min(light.intensity / 100.0, 3.0) * light.range ** 2
+        # Watts per square metre of GTA range; _f28 is 100 for most lights. 10 W/m² blew
+        # Hove Beach's lamps out into flares in game, so the default is 1 (--light-energy).
+        data.energy = energy * min(light.intensity / 100.0, 3.0) * light.range ** 2
         data.shadow_soft_size = 0.1
         data.use_shadow = False
         if light.spot:
@@ -281,7 +284,8 @@ def main(argv):
     studio.add_spawn(street_spawn())
     if "--no-lights" not in argv:
         limit = int(argv[argv.index("--max-lights") + 1]) if "--max-lights" in argv else 4000
-        counts.update(add_lights(area, builder, conjugate, limit))
+        energy = float(argv[argv.index("--light-energy") + 1]) if "--light-energy" in argv else 1.0
+        counts.update(add_lights(area, builder, conjugate, limit, energy))
     bpy.ops.wm.save_as_mainfile(filepath=str(out))
     detail_only = Counter({k.split(" ", 1)[1]: v for k, v in counts.items() if k.startswith("detail_only ")})
     counts = Counter({k: v for k, v in counts.items() if not k.startswith("detail_only ")})
