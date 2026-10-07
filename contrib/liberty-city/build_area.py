@@ -1,6 +1,7 @@
 """Builds a Blender scene of one GTA IV area, ready for ReSkate Studio.
 
     blender --background --python build_area.py -- <export folders> <area.json> <out.blend> [--no-conjugate]
+        [--no-lights] [--max-lights N] [--vertex-shading]
 
 <export folders> (several joined with ";") is OpenIV's openFormats export (the .odr files and the
 subfolders beside them); <area.json> comes from `python -m liberty.select_area`; its "edge" placements
@@ -14,28 +15,42 @@ or ones packed in .odd dictionaries) are skipped and counted.
 
 GTA IV stores placement rotations as the inverse quaternion, so they are
 conjugated; --no-conjugate turns that off if buildings come out turned.
+
+Each placed model's GTA IV lights (its .light: street lamps, signs, shop and
+window lights) become Blender point and spot lights that the Skate Map add-on
+exports, lit in the evening and at night only and without shadows. --max-lights
+keeps the longest-reaching ones (default 4000); --no-lights leaves them out.
 """
 import json
 import sys
 from collections import Counter
 from pathlib import Path
 
+import math
+
 import bpy
 from mathutils import Quaternion, Vector
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from liberty import lights as oflights  # noqa: E402
 from liberty import mesh as ofmesh  # noqa: E402
 from liberty import studio, surfaces  # noqa: E402
 
+LIGHT_TIMES = {"evening", "night", "weathernight"}
+SHADE_ATTRIBUTE = "gta_shade"  # --vertex-shading: GTA IV's baked lighting and occlusion per vertex
+MIN_LIGHT_RANGE = 2.0  # metres; tinier ones are coronas and sparkle, not light
+
 
 class Builder:
-    def __init__(self, exports: list[Path]):
+    def __init__(self, exports: list[Path], vertex_shading: bool = False):
+        self.vertex_shading = vertex_shading  # multiply GTA IV's baked vertex colour into the base colour
         self.odrs = {p.stem.lower(): p for e in exports for p in e.rglob("*.oft")}
         self.odrs.update({p.stem.lower(): p for e in exports for p in e.rglob("*.odr")})
         self.textures = {p.stem.lower(): p for e in exports for p in e.rglob("*.dds")}
         self.images: dict[Path, bpy.types.Image] = {}
         self.materials: dict[tuple, bpy.types.Material] = {}
         self.models: dict[str, tuple] = {}
+        self.lights: dict[str, list] = {}
         self.missing = Counter()
         self.shaders = Counter()  # "solid gta_normal" / "detail gta_glass" -> parts
 
@@ -66,7 +81,17 @@ class Builder:
         if image is not None:
             node = mat.node_tree.nodes.new("ShaderNodeTexImage")
             node.image = image
-            mat.node_tree.links.new(node.outputs["Color"], bsdf.inputs["Base Color"])
+            colour = node.outputs["Color"]
+            if self.vertex_shading:
+                shade = mat.node_tree.nodes.new("ShaderNodeVertexColor")
+                shade.layer_name = SHADE_ATTRIBUTE
+                mix = mat.node_tree.nodes.new("ShaderNodeMix")
+                mix.data_type, mix.blend_type = "RGBA", "MULTIPLY"
+                mix.inputs["Factor"].default_value = 1.0
+                mat.node_tree.links.new(colour, mix.inputs["A"])
+                mat.node_tree.links.new(shade.outputs["Color"], mix.inputs["B"])
+                colour = mix.outputs["Result"]
+            mat.node_tree.links.new(colour, bsdf.inputs["Base Color"])
             if cutout:
                 mat.node_tree.links.new(node.outputs["Alpha"], bsdf.inputs["Alpha"])
         # Decals carry soft worn edges in their alpha; a hard mask turns those into speckles.
@@ -99,17 +124,26 @@ class Builder:
         self.models[key] = result
         return result
 
-    @staticmethod
-    def mesh(name, parts):
+    def model_lights(self, name: str) -> list:
+        key = name.lower()
+        if key not in self.lights:
+            odr = self.odrs.get(key)
+            found = oflights.read_for_model(odr) if odr is not None else []
+            self.lights[key] = [light for light in found if light.range >= MIN_LIGHT_RANGE]
+        return self.lights[key]
+
+    def mesh(self, name, parts):
         if not parts:
             return None
-        verts, normals, uvs, faces, face_mats, slots = [], [], [], [], [], {}
+        verts, normals, uvs, colours, faces, face_mats, slots = [], [], [], [], [], [], {}
         for part, mat in parts:
             slot = slots.setdefault(mat.name, len(slots))
             base = len(verts)
             verts += part.positions
             normals += part.normals
             uvs += part.uvs
+            colours += part.colours if len(part.colours) == len(part.positions) else \
+                [(1.0, 1.0, 1.0)] * len(part.positions)
             for tri in part.triangles:
                 if max(tri) < len(part.positions) and len(set(tri)) == 3:
                     faces.append(tuple(base + i for i in tri))
@@ -124,6 +158,9 @@ class Builder:
         layer = me.uv_layers.new(name="UVMap")
         loop_uvs = [c for loop in me.loops for c in uvs[loop.vertex_index]]
         layer.data.foreach_set("uv", loop_uvs)
+        if self.vertex_shading:
+            shade = me.color_attributes.new(SHADE_ATTRIBUTE, "FLOAT_COLOR", "POINT")
+            shade.data.foreach_set("color", [c for rgb in colours for c in (*rgb, 1.0)])
         me.validate(clean_customdata=False)
         me.normals_split_custom_set_from_vertices([Vector(n).normalized() for n in normals])
         me.update()
@@ -158,6 +195,44 @@ def place(area: dict, builder: Builder, conjugate: bool) -> Counter:
             studio.set_collision(obj, "triangle_mesh" if collide else "none")
             counts["objects"] += 1
         counts["placed"] += 1
+    return counts
+
+
+def add_lights(area: dict, builder: Builder, conjugate: bool, limit: int) -> Counter:
+    """Every placed model's GTA IV lights as Blender lights, the longest-reaching
+    `limit` of them. Edge placements are past the box and bring no lights."""
+    wanted = []
+    for p in area["placements"]:
+        if p.get("edge"):
+            continue
+        x, y, z, w = p["rotation"]
+        rotation = Quaternion((w, -x, -y, -z) if conjugate else (w, x, y, z))
+        for light in builder.model_lights(p["model"]):
+            wanted.append((light, rotation, Vector(p["position"])))
+    wanted.sort(key=lambda row: -row[0].range)
+    counts = Counter(lights_found=len(wanted))
+    root = bpy.context.scene.collection
+    for i, (light, rotation, origin) in enumerate(wanted[:limit]):
+        data = bpy.data.lights.new(f"gta_light_{i}", "SPOT" if light.spot else "POINT")
+        data.color = light.color
+        # Watts that reach usefully across the GTA range; _f28 is 100 for most lights.
+        data.energy = 10.0 * min(light.intensity / 100.0, 3.0) * light.range ** 2
+        data.shadow_soft_size = 0.1
+        data.use_shadow = False
+        if light.spot:
+            outer = max(light.falloff, 1.0)
+            data.spot_size = math.radians(min(outer, 179.0))
+            data.spot_blend = max(0.0, min(1.0, 1.0 - light.hotspot / outer))
+        obj = bpy.data.objects.new(data.name, data)
+        obj.location = origin + rotation @ Vector(light.position)
+        direction = rotation @ Vector(light.direction)
+        if direction.length > 1e-6:
+            obj.rotation_mode = "QUATERNION"
+            obj.rotation_quaternion = Vector((0.0, 0.0, -1.0)).rotation_difference(direction.normalized())
+        root.objects.link(obj)
+        studio.set_light(obj, light.range, LIGHT_TIMES)
+        counts["spot" if light.spot else "point"] += 1
+    counts["lights_dropped_by_limit"] = max(0, len(wanted) - limit)
     return counts
 
 
@@ -201,9 +276,12 @@ def main(argv):
     except Exception:
         print("Skate Map add-on not enabled; writing plain sk8_* properties instead.")
     area = json.loads(area_file.read_text())
-    builder = Builder(exports)
+    builder = Builder(exports, vertex_shading="--vertex-shading" in argv)
     counts = place(area, builder, conjugate)
     studio.add_spawn(street_spawn())
+    if "--no-lights" not in argv:
+        limit = int(argv[argv.index("--max-lights") + 1]) if "--max-lights" in argv else 4000
+        counts.update(add_lights(area, builder, conjugate, limit))
     bpy.ops.wm.save_as_mainfile(filepath=str(out))
     detail_only = Counter({k.split(" ", 1)[1]: v for k, v in counts.items() if k.startswith("detail_only ")})
     counts = Counter({k: v for k, v in counts.items() if not k.startswith("detail_only ")})

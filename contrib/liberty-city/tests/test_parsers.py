@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from liberty import ide, select_area, wpl  # noqa: E402
+from liberty import ide, lights, select_area, wpl  # noqa: E402
 from liberty.hashing import model_hash  # noqa: E402
 
 
@@ -71,6 +71,44 @@ class Ide(unittest.TestCase):
             self.assertTrue(named(n).is_lod, n)
         for n in ("explode_01_MH12", "CC_AptBase_MH7"):
             self.assertFalse(named(n).is_lod, n)
+
+
+LIGHT = """Version 1 10
+{
+	Attribute 0
+	{
+		Position -0.43455100 -0.91525500 -0.92205100
+		Direction 0.00000000 0.00000000 -1.00000000
+		Color 255 219 155 0
+		_f28 150.00000000
+		Range 12.00000000
+		HotSpot 40.00000000
+		Falloff 60.00000000
+		Type Spot
+		BoneID 9097
+	}
+	Attribute 1
+	{
+		Position 1 2 3
+		Color 220 255 255 0
+		_f28 100.00000000
+		Range 13.00000000
+		Type Omni
+		BoneID 0
+	}
+}
+"""
+
+
+class Lights(unittest.TestCase):
+    def test_spot_and_omni(self):
+        spot, omni = lights.parse(LIGHT)
+        self.assertTrue(spot.spot)
+        self.assertEqual(spot.bone_id, 9097)
+        self.assertEqual((spot.range, spot.hotspot, spot.falloff, spot.intensity), (12.0, 40.0, 60.0, 150.0))
+        self.assertAlmostEqual(spot.color[1], 219 / 255)
+        self.assertFalse(omni.spot)
+        self.assertEqual(omni.position, (1.0, 2.0, 3.0))
 
 
 class SelectArea(unittest.TestCase):

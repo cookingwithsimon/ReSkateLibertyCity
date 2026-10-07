@@ -1,7 +1,8 @@
 """Writes ReSkate Studio's map settings onto Blender objects (runs inside Blender).
 
 Studio's "Skate Map" add-on (sk8_map_export, 2.20) keeps them in PointerProperty
-groups: Object.sk8_object, Material.sk8_material, Object.sk8_grind_curve. When
+groups: Object.sk8_object, Material.sk8_material, Object.sk8_grind_curve,
+Object.sk8_light. When
 the add-on is not enabled the same values go in as the plain ID properties its
 importer also reads, so a .blend built headless still compiles.
 """
@@ -63,6 +64,22 @@ def set_grind_curve(obj, radius: float = 0.03) -> None:
         settings.radius = radius
     else:
         obj["sk8_grind_curve"] = {"enabled": True, "radius": radius}
+
+
+# Object.sk8_light.time_of_day flags, as the add-on's light_records sums them.
+LIGHT_TIMES = {"morning": 1, "noon": 2, "afternoon": 4, "evening": 8,
+               "night": 16, "weatherday": 32, "weathernight": 64}
+
+
+def set_light(obj, range_m: float, times: set[str]) -> None:
+    """A light's native range in metres and the times of day it is on."""
+    settings = getattr(obj, "sk8_light", None)
+    if settings is not None:
+        settings.attenuation_radius = range_m
+        settings.time_of_day = set(times)
+    else:
+        obj["sk8_light_range"] = float(range_m)
+        obj["sk8_light_tod"] = sum(LIGHT_TIMES[t] for t in times)
 
 
 def add_spawn(location, yaw_degrees: float = 0.0):

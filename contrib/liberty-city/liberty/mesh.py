@@ -44,6 +44,7 @@ class Part:
     normals: list[tuple[float, float, float]] = field(default_factory=list)
     uvs: list[tuple[float, float]] = field(default_factory=list)
     alphas: list[float] = field(default_factory=list)  # vertex colour alpha, 0..1
+    colours: list[tuple[float, float, float]] = field(default_factory=list)  # vertex colour RGB, 0..1 (baked shading)
     triangles: list[tuple[int, int, int]] = field(default_factory=list)
 
 
@@ -122,6 +123,7 @@ def parse_mesh(text: str) -> list[Part]:
             part.normals.append(tuple(float(v) for v in groups[1][:3]))
             colour = groups[2]
             part.alphas.append(float(colour[3]) / 255.0 if len(colour) >= 4 else 1.0)
+            part.colours.append(tuple(float(c) / 255.0 for c in colour[:3]) if len(colour) >= 3 else (1.0, 1.0, 1.0))
             u, v = (float(x) for x in groups[4][:2])
             part.uvs.append((u, 1.0 - v))  # DirectX top-left origin to Blender bottom-left
     return parts
@@ -152,9 +154,10 @@ def _rotate(q, v):
     return (x, y, z)
 
 
-def parse_skel(text: str) -> dict[int, tuple[tuple, tuple]]:
+def parse_skel(text: str, key_by: str = "index") -> dict[int, tuple[tuple, tuple]]:
     """{bone index: (offset, quaternion xyzw)} in fragment space, chaining each
-    bone's LocalOffset and RotationQuaternion down the hierarchy."""
+    bone's LocalOffset and RotationQuaternion down the hierarchy. key_by="id"
+    keys the bones by their Id instead, which is what a .light's BoneID names."""
     bones: dict[int, tuple[tuple, tuple]] = {}
     stack: list[dict] = []  # open bones, innermost last
     depth_of: list[int] = []  # brace depth at which each open bone's block closes
@@ -170,6 +173,8 @@ def parse_skel(text: str) -> dict[int, tuple[tuple, tuple]]:
             depth_of.append(depth)
         elif stack and key == "Index":
             stack[-1]["index"] = int(tokens[1])
+        elif stack and key == "Id":
+            stack[-1]["id"] = int(tokens[1])
         elif stack and key == "LocalOffset":
             stack[-1]["offset"] = tuple(float(t) for t in tokens[1:4])
         elif stack and key == "RotationQuaternion":
@@ -183,8 +188,8 @@ def parse_skel(text: str) -> dict[int, tuple[tuple, tuple]]:
                 offset = tuple(a + b for a, b in zip(p_off, _rotate(p_rot, bone["offset"])))
                 rotation = _qmul(p_rot, bone["rotation"])
             bone["world"] = (offset, rotation)
-            if "index" in bone:
-                bones[bone["index"]] = bone["world"]
+            if key_by in bone:
+                bones[bone[key_by]] = bone["world"]
         for token in tokens:  # braces may share a line with a keyword
             if token == "{":
                 depth += 1
