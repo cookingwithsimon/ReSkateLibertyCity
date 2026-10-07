@@ -1,7 +1,7 @@
 """Builds a Blender scene of one GTA IV area, ready for ReSkate Studio.
 
     blender --background --python build_area.py -- <export folders> <area.json> <out.blend> [--no-conjugate]
-        [--no-lights] [--max-lights N] [--light-energy W_PER_M2] [--vertex-shading]
+        [--no-lights] [--max-lights N] [--light-energy SCALE] [--vertex-shading]
 
 <export folders> (several joined with ";") is OpenIV's openFormats export (the .odr files and the
 subfolders beside them); <area.json> comes from `python -m liberty.select_area`; its "edge" placements
@@ -20,7 +20,7 @@ Each placed model's GTA IV lights (its .light: street lamps, signs, shop and
 window lights) become Blender point and spot lights that the Skate Map add-on
 exports, lit in the evening and at night only and without shadows. --max-lights
 keeps the longest-reaching ones (default 4000); --no-lights leaves them out.
-A light gets --light-energy watts (default 1) per square metre of its range.
+A light gets 4 W per metre of its range, kept within 16-80 W, times --light-energy (default 1).
 --vertex-shading is experimental: Studio's procedural bake of it comes out black.
 """
 import json
@@ -220,9 +220,10 @@ def add_lights(area: dict, builder: Builder, conjugate: bool, limit: int, energy
     for i, (light, rotation, origin) in enumerate(wanted[:limit]):
         data = bpy.data.lights.new(f"gta_light_{i}", "SPOT" if light.spot else "POINT")
         data.color = light.color
-        # Watts per square metre of GTA range; _f28 is 100 for most lights. 10 W/m² blew
-        # Hove Beach's lamps out into flares in game, so the default is 1 (--light-energy).
-        data.energy = energy * min(light.intensity / 100.0, 3.0) * light.range ** 2
+        # 4 W per metre of GTA range, 16-80 W, times --light-energy. The game's own range
+        # handles the falloff; scaling watts by range squared (and by _f28) made Hove Beach's
+        # long-range sodium lamps (up to 1,800 W) flare, while 25-64 W lights looked right.
+        data.energy = energy * min(max(4.0 * light.range, 16.0), 80.0)
         data.shadow_soft_size = 0.1
         data.use_shadow = False
         if light.spot:
