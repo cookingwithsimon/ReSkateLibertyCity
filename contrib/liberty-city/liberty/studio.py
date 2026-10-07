@@ -23,6 +23,9 @@ SURFACES = {
     "brick": "material_2016",
     "glass": "material_2144",
     "metal_rail": "material_2976",
+    # Metal Rail with the IncludeInSurfaceAnalysis property: grinds as a smooth surface,
+    # as the add-on's Round Rail switch does, so many-sided tubes grind too.
+    "metal_rail_round": "material_37227424",
     "earth": "material_3488",
     "stairs": "material_47186720",  # Concrete with the Stairs behaviour
 }
@@ -44,7 +47,8 @@ MATERIAL_SURFACES = {"concrete", "asphalt", "metal", "brick", "glass", "grass", 
 
 def set_material(mat, surface: str = "default", invisible: bool = False, alpha: str = "auto") -> None:
     """`surface` is a key of SURFACES; `alpha` is auto, opaque, mask or blend."""
-    look = surface if surface in MATERIAL_SURFACES else {"earth": "dirt"}.get(surface, "default")
+    look = surface if surface in MATERIAL_SURFACES else \
+        {"earth": "dirt", "metal_rail_round": "metal_rail"}.get(surface, "default")
     settings = getattr(mat, "sk8_material", None)
     if settings is not None:
         settings.surface = look

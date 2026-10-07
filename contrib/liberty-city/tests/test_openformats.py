@@ -68,6 +68,12 @@ class Surfaces(unittest.TestCase):
         self.assertFalse(surfaces.is_solid("gta_cutout", "ag_liveoak_leafag_liveoak_leaf_alpha"))
         self.assertFalse(surfaces.is_solid("gta_alpha", "cistillwglascistillwglas_a"))
         self.assertFalse(surfaces.is_solid("gta_decal", "rail_decal"))
+
+    def test_rails_grind_as_smooth_metal_rail(self):
+        self.assertEqual(surfaces.surface_for(r"x\sl_rustedmtl_rail01sl_rustedmtl_rail01a.dds"), "metal_rail_round")
+        self.assertEqual(surfaces.surface_for("sl_tainohandrail_01"), "metal_rail_round")
+        self.assertEqual(surfaces.surface_for("pris_fence2pris_fence2b"), "concrete")
+        self.assertEqual(surfaces.surface_for("bm_grillbm_grill_a"), "metal")
         self.assertEqual(surfaces.surface_for("02ground_mh8\\dc_pavement_plainsmall01.dds"), "concrete")
         self.assertEqual(surfaces.surface_for("nj_road_tarmac01"), "asphalt")
         self.assertEqual(surfaces.surface_for("dc_curb_metalsmall02.dds"), "metal")

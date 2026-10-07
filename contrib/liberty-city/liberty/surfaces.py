@@ -17,6 +17,9 @@ TEXTURE_SURFACES = (
     (("brick",), "brick"),
     (("marble",), "marble"),
     (("glass", "window", "win_"), "glass"),
+    # Handrails and railings grind as smooth metal rail (the station's queue and platform
+    # rails, sl_rustedmtl_rail01); "trail" and the track bed ("tracks") are not rails.
+    (("handrail", "railing", "_rail", "rail_", "rail0", "railks"), "metal_rail_round"),
     (("rail", "metal", "steel", "iron", "grate", "grill"), "metal"),
 )
 
