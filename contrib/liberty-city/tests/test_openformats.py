@@ -82,6 +82,8 @@ class Surfaces(unittest.TestCase):
         self.assertTrue(emissive.is_sign("gta_emissive", "dc_sprunkad1.dds"))
         self.assertFalse(emissive.is_sign("gta_emissivenight_alpha", "dm_nightemissive01dm_nightemissive01_a"))
         self.assertFalse(emissive.is_sign("gta_normal_spec", "dc_sprunkad1.dds"))
+        self.assertTrue(emissive.is_sign("gta_default", "ts_billboard_mh7.dds"))
+        self.assertTrue(emissive.is_sign("gta_spec", "cj_poster_4cj_poster_4_a"))
         self.assertTrue(emissive.is_lamp("gta_emissive", "Bx_ellamp_bulb_w"))
         # Two 1 m letters 2 m apart facing the same way merge into one panel.
         quad = [(0, 0, 0), (1, 0, 0), (1, 0, 1), (0, 0, 1)]

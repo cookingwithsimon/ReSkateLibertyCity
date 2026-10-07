@@ -135,6 +135,13 @@ def is_lamp(shader: str, texture: str | None) -> bool:
     return "emissive" in shader and any(w in name for w in LAMP_TEXTURES)
 
 
+# Billboards and posters drawn with ordinary shaders: Studio has no emissive materials,
+# so they only read at night with a light in front of them.
+BILLBOARD_TEXTURES = ("billboard", "billb", "bilb", "bllbrd", "bilbrd", "poster", "advert", "hoarding")
+
+
 def is_sign(shader: str, texture: str | None) -> bool:
     name = (texture or "").lower().rsplit("\\", 1)[-1]
-    return "emissive" in shader and bool(name) and not any(w in name for w in NOT_SIGNS)
+    if not name or any(w in name for w in NOT_SIGNS):
+        return False
+    return "emissive" in shader or any(w in name for w in BILLBOARD_TEXTURES)

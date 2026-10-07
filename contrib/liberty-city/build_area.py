@@ -21,10 +21,13 @@ window lights) become Blender point and spot lights that the Skate Map add-on
 exports, lit in the evening and at night only and without shadows. --max-lights
 keeps the longest-reaching ones (default 4000); --no-lights leaves them out.
 A light gets 4 W per metre of its range, kept within 16-80 W, times --light-energy (default 1).
-Omni lights reach at least 10 m (GTA IV's 6 m ceiling tubes left platforms black), and
-emissive lamp bulbs and tubes of models with no .light get a point light each.
---sign-lights adds a soft area light in front of each emissive billboard or screen of
-6 m² or more (the largest 400), facing out and coloured by its texture's average.
+Omni lights reach at least 10 m (GTA IV's 6 m ceiling tubes left platforms black);
+down-facing spots (street lamps) get at least a 120° cone and 1.5x their reach (20 m at
+least). Emissive lamp bulbs and tubes of models with no .light get a soft 40 W point light
+per bulb cluster (not scaled by --light-energy).
+--sign-lights adds a soft area light in front of each emissive billboard or screen, or
+billboard/poster texture, of 6 m² or more (the largest 600), facing out and coloured by
+its texture's average.
 --vertex-shading is experimental: Studio's procedural bake of it comes out black.
 """
 import json
@@ -51,7 +54,11 @@ MIN_LIGHT_RANGE = 2.0  # metres; tinier ones are coronas and sparkle, not light
 MIN_OMNI_RANGE = 10.0
 MIN_SIGN_AREA = 6.0  # m²: billboards and screens big enough to light the street
 LAMP_CLUSTER = 1.5  # m: bulbs closer than this share one light
-MAX_SIGN_LIGHTS = 400
+LAMP_WATTS = 40.0  # per bulb, for bulbs of models with no .light
+# Street lamps: GTA IV's down-facing spots leave the road between lamps dark in Skate.
+STREET_LAMP_CONE = 120.0  # degrees, at least
+STREET_LAMP_REACH = 1.5  # times the GTA range, and at least 20 m
+MAX_SIGN_LIGHTS = 600
 
 
 class Builder:
@@ -207,6 +214,9 @@ class Builder:
             for light in kept:
                 if not light.spot:
                     light.range = max(light.range, MIN_OMNI_RANGE)
+                elif light.direction[2] < -0.7:  # a street lamp shining down
+                    light.falloff = max(light.falloff, STREET_LAMP_CONE)
+                    light.range = max(light.range * STREET_LAMP_REACH, 20.0)
             self.lights[key] = kept
         return self.lights[key]
 
@@ -337,8 +347,10 @@ def add_emitter_lights(area: dict, builder: Builder, conjugate: bool, energy: fl
                 data.color = (1.0, 0.95, 0.85)
                 # A lamp is often two islands (front and back of the bulb): keep up to two
                 # bulbs' worth, so pairs stay as bright while bulb patterns collapse to one.
-                data.energy = energy * 4.0 * MIN_OMNI_RANGE * min(island.count, 2)
-                data.shadow_soft_size = 0.1
+                # Fixed watts, not scaled by --light-energy: these are guesses, and at 3x
+                # they blew out; a wide soft source keeps them from glaring.
+                data.energy = LAMP_WATTS * min(island.count, 2)
+                data.shadow_soft_size = 0.5
                 data.use_shadow = False
                 obj = bpy.data.objects.new(data.name, data)
                 obj.location = centre + normal * 0.15
