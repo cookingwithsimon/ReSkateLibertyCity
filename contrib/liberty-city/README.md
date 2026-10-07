@@ -10,6 +10,7 @@ Pipeline: OpenIV export → `select_area` (placements in a box) → Blender scen
 
 ```sh
 python -m liberty.select_area <export folder> [<props export>...] --box minX minY maxX maxY -o area.json
+python -m liberty.tri_report <export folder>... --area area.json -o tris.json   # where the triangles go
 python -m unittest discover -s tests
 ```
 

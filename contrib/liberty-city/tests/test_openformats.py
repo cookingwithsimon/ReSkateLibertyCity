@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import fixtures  # noqa: E402
-from liberty import mesh, opl, select_area, surfaces  # noqa: E402
+from liberty import mesh, opl, select_area, surfaces, tri_report  # noqa: E402
 
 
 class Opl(unittest.TestCase):
@@ -119,6 +119,23 @@ class SelectFromOpl(unittest.TestCase):
             out = select_area.select(fixtures.write(Path(d)), (0, 10, 12, 30), margin=5)
         self.assertEqual([(p["model"], p["edge"]) for p in out["placements"]],
                          [("test_slab", False), ("test_slab", True), ("test_prop", False)])
+
+
+class TriReport(unittest.TestCase):
+    def test_counts_inside_and_edge(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = fixtures.write(Path(d))
+            inside = select_area.select(root, (0, 10, 30, 30))
+            edge = select_area.select(root, (0, 10, 12, 30), margin=5)
+            one = tri_report.report([root], inside)
+            two = tri_report.report([root], edge)
+        slab = one["top_models"][0]
+        self.assertEqual((slab["model"], slab["placements"]), ("test_slab", 2))
+        self.assertEqual(one["breakdown"]["missing"], {"test_prop": 1})
+        self.assertEqual(one["triangles"], 2 * slab["each"])
+        # The edge copy keeps its solid slab and loses the decal on top.
+        self.assertLess(two["breakdown"]["place"]["edge"], slab["each"])
+        self.assertEqual(two["breakdown"]["place"]["edge"], one["breakdown"]["kind"]["solid"] // 2)
 
 
 if __name__ == "__main__":
