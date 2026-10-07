@@ -1,7 +1,7 @@
 """Builds a Blender scene of one GTA IV area, ready for ReSkate Studio.
 
     blender --background --python build_area.py -- <export folders> <area.json> <out.blend> [--no-conjugate]
-        [--no-lights] [--max-lights N] [--light-energy SCALE] [--vertex-shading]
+        [--no-lights] [--max-lights N] [--light-energy SCALE] [--sign-lights] [--vertex-shading]
 
 <export folders> (several joined with ";") is OpenIV's openFormats export (the .odr files and the
 subfolders beside them); <area.json> comes from `python -m liberty.select_area`; its "edge" placements
@@ -21,6 +21,10 @@ window lights) become Blender point and spot lights that the Skate Map add-on
 exports, lit in the evening and at night only and without shadows. --max-lights
 keeps the longest-reaching ones (default 4000); --no-lights leaves them out.
 A light gets 4 W per metre of its range, kept within 16-80 W, times --light-energy (default 1).
+Omni lights reach at least 10 m (GTA IV's 6 m ceiling tubes left platforms black), and
+emissive lamp bulbs and tubes of models with no .light get a point light each.
+--sign-lights adds a soft area light in front of each emissive billboard or screen of
+6 m² or more (the largest 400), facing out and coloured by its texture's average.
 --vertex-shading is experimental: Studio's procedural bake of it comes out black.
 """
 import json
@@ -31,10 +35,11 @@ from pathlib import Path
 import math
 
 import bpy
-from mathutils import Quaternion, Vector
+from mathutils import Matrix, Quaternion, Vector
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from liberty import dds  # noqa: E402
+from liberty import emissive  # noqa: E402
 from liberty import lights as oflights  # noqa: E402
 from liberty import mesh as ofmesh  # noqa: E402
 from liberty import studio, surfaces  # noqa: E402
@@ -42,6 +47,10 @@ from liberty import studio, surfaces  # noqa: E402
 LIGHT_TIMES = {"evening", "night", "weathernight"}
 SHADE_ATTRIBUTE = "gta_shade"  # --vertex-shading: GTA IV's baked lighting and occlusion per vertex
 MIN_LIGHT_RANGE = 2.0  # metres; tinier ones are coronas and sparkle, not light
+# GTA IV's ceiling tubes reach 6 m, which leaves Hove Beach's platform black in Skate.
+MIN_OMNI_RANGE = 10.0
+MIN_SIGN_AREA = 6.0  # m²: billboards and screens big enough to light the street
+MAX_SIGN_LIGHTS = 400
 
 
 class Builder:
@@ -54,6 +63,8 @@ class Builder:
         self.materials: dict[tuple, bpy.types.Material] = {}
         self.models: dict[str, tuple] = {}
         self.lights: dict[str, list] = {}
+        self.emitters: dict[str, list] = {}  # model -> [("lamp"|"sign", Island, image or None)]
+        self.average: dict = {}  # image -> mean RGB
         self.opaque: dict[Path, bool] = {}
         self.missing = Counter()
         self.shaders = Counter()  # "solid gta_normal" / "detail gta_glass" -> parts
@@ -119,6 +130,7 @@ class Builder:
         else:
             read = ofmesh.read_fragment if odr.suffix.lower() == ".oft" else ofmesh.read_model
             drawable, parts = read(odr)
+            self.emitters[key] = self.find_emitters(odr, drawable, parts)
             groups = {True: [], False: []}
             for part in parts:
                 if part.material < len(drawable.shaders):
@@ -131,6 +143,43 @@ class Builder:
             result = (self.mesh(name, groups[True]), self.mesh(name + "_detail", groups[False]))
         self.models[key] = result
         return result
+
+    def find_emitters(self, odr: Path, drawable, parts) -> list:
+        """Lamp islands of models with no .light (so they would cast nothing) and large
+        emissive signs and screens."""
+        has_lights = any((odr.parent / odr.stem).glob("*.light"))
+        out = []
+        for part in parts:
+            if part.material >= len(drawable.shaders):
+                continue
+            shader = drawable.shaders[part.material]
+            lamp = not has_lights and emissive.is_lamp(shader.name, shader.diffuse)
+            sign = emissive.is_sign(shader.name, shader.diffuse)
+            if not (lamp or sign):
+                continue
+            found = emissive.islands(part.positions, part.triangles)
+            if lamp:
+                out += [("lamp", island, None) for island in found]
+                continue
+            for island in emissive.merge(found):
+                if island.area >= MIN_SIGN_AREA:
+                    out.append(("sign", island, self.texture(odr, shader.diffuse)))
+        return out
+
+    def average_colour(self, image) -> tuple[float, float, float]:
+        """The texture's mean colour, brightest channel scaled to 1."""
+        if image is None:
+            return (1.0, 1.0, 1.0)
+        if image not in self.average:
+            small = image.copy()
+            small.scale(16, 16)
+            px = small.pixels[:]
+            bpy.data.images.remove(small)
+            n = len(px) // 4
+            rgb = [sum(px[c::4]) / max(n, 1) for c in range(3)]
+            peak = max(rgb) or 1.0
+            self.average[image] = tuple(max(v / peak, 0.05) for v in rgb)
+        return self.average[image]
 
     def opaque_part(self, odr: Path, shader: ofmesh.Shader) -> bool:
         """An alpha or cutout part whose texture has no transparency: solid geometry."""
@@ -150,7 +199,11 @@ class Builder:
         if key not in self.lights:
             odr = self.odrs.get(key)
             found = oflights.read_for_model(odr) if odr is not None else []
-            self.lights[key] = [light for light in found if light.range >= MIN_LIGHT_RANGE]
+            kept = [light for light in found if light.range >= MIN_LIGHT_RANGE]
+            for light in kept:
+                if not light.spot:
+                    light.range = max(light.range, MIN_OMNI_RANGE)
+            self.lights[key] = kept
         return self.lights[key]
 
     def mesh(self, name, parts):
@@ -259,6 +312,61 @@ def add_lights(area: dict, builder: Builder, conjugate: bool, limit: int, energy
     return counts
 
 
+def add_emitter_lights(area: dict, builder: Builder, conjugate: bool, energy: float, signs: bool) -> Counter:
+    """Point lights on lamp bulbs and tubes of models with no .light, and (signs=True)
+    a soft area light 0.3 m in front of each large emissive billboard or screen,
+    facing out and coloured by its texture; all on in the evening and at night."""
+    counts = Counter()
+    root = bpy.context.scene.collection
+    sign_rows = []
+    for p in area["placements"]:
+        if p.get("edge"):
+            continue
+        x, y, z, w = p["rotation"]
+        rotation = Quaternion((w, -x, -y, -z) if conjugate else (w, x, y, z))
+        origin = Vector(p["position"])
+        for kind, island, image in builder.emitters.get(p["model"].lower(), []):
+            centre = origin + rotation @ Vector(island.centre)
+            normal = (rotation @ Vector(island.normal)).normalized()
+            if kind == "lamp":
+                data = bpy.data.lights.new(f"gta_lamp_{counts['lamp']}", "POINT")
+                data.color = (1.0, 0.95, 0.85)
+                data.energy = energy * 4.0 * MIN_OMNI_RANGE
+                data.shadow_soft_size = 0.1
+                data.use_shadow = False
+                obj = bpy.data.objects.new(data.name, data)
+                obj.location = centre + normal * 0.15
+                root.objects.link(obj)
+                studio.set_light(obj, MIN_OMNI_RANGE, LIGHT_TIMES)
+                counts["lamp"] += 1
+            elif signs:
+                sign_rows.append((island, image, centre, normal, rotation))
+    sign_rows.sort(key=lambda row: -row[0].area)
+    for island, image, centre, normal, rotation in sign_rows[:MAX_SIGN_LIGHTS]:
+        width = min(max(island.width, 0.5), 30.0)
+        height = min(max(island.height, 0.5), 30.0)
+        data = bpy.data.lights.new(f"gta_sign_{counts['sign']}", "AREA")
+        data.shape = "RECTANGLE"
+        data.size, data.size_y = width, height
+        data.color = builder.average_colour(image)
+        data.energy = energy * min(max(20.0 * island.area, 100.0), 3000.0)
+        data.use_shadow = False
+        obj = bpy.data.objects.new(data.name, data)
+        # An area lamp shines down its local -Z: X along the sign's width, Y up it, Z into the wall.
+        right = (rotation @ Vector(island.right)).normalized()
+        up = (rotation @ Vector(island.up)).normalized()
+        frame = Matrix((
+            (right.x, up.x, -normal.x, 0.0), (right.y, up.y, -normal.y, 0.0),
+            (right.z, up.z, -normal.z, 0.0), (0.0, 0.0, 0.0, 1.0))).normalized()
+        frame.translation = centre + normal * 0.3
+        obj.matrix_world = frame
+        root.objects.link(obj)
+        studio.set_light(obj, max(width, height) * 1.5 + 5.0, LIGHT_TIMES)
+        counts["sign"] += 1
+    counts["signs_dropped_by_limit"] = max(0, len(sign_rows) - MAX_SIGN_LIGHTS)
+    return counts
+
+
 def _hits(x: float, y: float) -> list[float]:
     """Heights of every surface straight down at (x, y), top first."""
     depsgraph = bpy.context.evaluated_depsgraph_get()
@@ -306,6 +414,8 @@ def main(argv):
         limit = int(argv[argv.index("--max-lights") + 1]) if "--max-lights" in argv else 4000
         energy = float(argv[argv.index("--light-energy") + 1]) if "--light-energy" in argv else 1.0
         counts.update(add_lights(area, builder, conjugate, limit, energy))
+        emitted = add_emitter_lights(area, builder, conjugate, energy, "--sign-lights" in argv)
+        counts.update({f"{k}_lights" if k in ("lamp", "sign") else k: v for k, v in emitted.items()})
     bpy.ops.wm.save_as_mainfile(filepath=str(out))
     detail_only = Counter({k.split(" ", 1)[1]: v for k, v in counts.items() if k.startswith("detail_only ")})
     counts = Counter({k: v for k, v in counts.items() if not k.startswith("detail_only ")})

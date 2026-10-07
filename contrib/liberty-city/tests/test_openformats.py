@@ -77,6 +77,21 @@ class Surfaces(unittest.TestCase):
         self.assertFalse(surfaces.opaque_alpha_is_solid("gta_normal_spec", "anything"))
         self.assertEqual(surfaces.surface_for("cj_green_grenade2"), "metal_rail_round")
 
+    def test_emissive_signs_and_lamps(self):
+        from liberty import emissive
+        self.assertTrue(emissive.is_sign("gta_emissive", "dc_sprunkad1.dds"))
+        self.assertFalse(emissive.is_sign("gta_emissivenight_alpha", "dm_nightemissive01dm_nightemissive01_a"))
+        self.assertFalse(emissive.is_sign("gta_normal_spec", "dc_sprunkad1.dds"))
+        self.assertTrue(emissive.is_lamp("gta_emissive", "Bx_ellamp_bulb_w"))
+        # Two 1 m letters 2 m apart facing the same way merge into one panel.
+        quad = [(0, 0, 0), (1, 0, 0), (1, 0, 1), (0, 0, 1)]
+        positions = quad + [(x + 2, y, z) for x, y, z in quad]
+        found = emissive.islands(positions, [(0, 1, 2), (0, 2, 3), (4, 5, 6), (4, 6, 7)])
+        self.assertEqual(len(found), 2)
+        [panel] = emissive.merge(found)
+        self.assertAlmostEqual(panel.area, 2.0)
+        self.assertAlmostEqual(panel.width, 3.0)
+
     def test_rails_grind_as_smooth_metal_rail(self):
         self.assertEqual(surfaces.surface_for(r"x\sl_rustedmtl_rail01sl_rustedmtl_rail01a.dds"), "metal_rail_round")
         self.assertEqual(surfaces.surface_for("sl_tainohandrail_01"), "metal_rail_round")
