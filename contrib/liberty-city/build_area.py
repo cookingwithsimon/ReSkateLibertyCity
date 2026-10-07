@@ -50,6 +50,7 @@ MIN_LIGHT_RANGE = 2.0  # metres; tinier ones are coronas and sparkle, not light
 # GTA IV's ceiling tubes reach 6 m, which leaves Hove Beach's platform black in Skate.
 MIN_OMNI_RANGE = 10.0
 MIN_SIGN_AREA = 6.0  # m²: billboards and screens big enough to light the street
+LAMP_CLUSTER = 1.5  # m: bulbs closer than this share one light
 MAX_SIGN_LIGHTS = 400
 
 
@@ -159,7 +160,10 @@ class Builder:
                 continue
             found = emissive.islands(part.positions, part.triangles)
             if lamp:
-                out += [("lamp", island, None) for island in found]
+                # Bulb patterns (fairground rides, sign borders) put dozens of bulbs within
+                # a metre; one light per cluster keeps them from stacking into a blow-out,
+                # while ceiling lamps a few metres apart keep a light each.
+                out += [("lamp", island, None) for island in emissive.merge(found, gap=LAMP_CLUSTER, facing=-1.0)]
                 continue
             for island in emissive.merge(found):
                 if island.area >= MIN_SIGN_AREA:
@@ -331,7 +335,9 @@ def add_emitter_lights(area: dict, builder: Builder, conjugate: bool, energy: fl
             if kind == "lamp":
                 data = bpy.data.lights.new(f"gta_lamp_{counts['lamp']}", "POINT")
                 data.color = (1.0, 0.95, 0.85)
-                data.energy = energy * 4.0 * MIN_OMNI_RANGE
+                # A lamp is often two islands (front and back of the bulb): keep up to two
+                # bulbs' worth, so pairs stay as bright while bulb patterns collapse to one.
+                data.energy = energy * 4.0 * MIN_OMNI_RANGE * min(island.count, 2)
                 data.shadow_soft_size = 0.1
                 data.use_shadow = False
                 obj = bpy.data.objects.new(data.name, data)

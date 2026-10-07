@@ -27,6 +27,7 @@ class Island:
     height: float  # extent along its second axis
     right: tuple[float, float, float]
     up: tuple[float, float, float]
+    count: int = 1  # islands merged into this one
 
 
 def _sub(a, b):
@@ -124,7 +125,8 @@ def merge(found: list[Island], gap: float = 4.0, facing: float = 0.9) -> list[Is
             x, y = _dot(offset, lead.right), _dot(offset, lead.up)
             xs += [x - i.width / 2, x + i.width / 2]
             ys += [y - i.height / 2, y + i.height / 2]
-        out.append(Island(centre, lead.normal, area, max(xs) - min(xs), max(ys) - min(ys), lead.right, lead.up))
+        out.append(Island(centre, lead.normal, area, max(xs) - min(xs), max(ys) - min(ys), lead.right, lead.up,
+                          sum(i.count for i in group)))
     return out
 
 
