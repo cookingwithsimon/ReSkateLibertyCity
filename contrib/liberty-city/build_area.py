@@ -90,9 +90,12 @@ class Builder:
                 mix = mat.node_tree.nodes.new("ShaderNodeMix")
                 mix.data_type, mix.blend_type = "RGBA", "MULTIPLY"
                 mix.inputs["Factor"].default_value = 1.0
-                mat.node_tree.links.new(colour, mix.inputs["A"])
-                mat.node_tree.links.new(shade.outputs["Color"], mix.inputs["B"])
-                colour = mix.outputs["Result"]
+                # The Mix node keeps float, vector and colour sockets under the same names;
+                # by name alone "A" is the float one, which left the colour inputs at black.
+                a, b = (next(s for s in mix.inputs if s.name == n and s.type == "RGBA") for n in "AB")
+                mat.node_tree.links.new(colour, a)
+                mat.node_tree.links.new(shade.outputs["Color"], b)
+                colour = next(s for s in mix.outputs if s.type == "RGBA")
             mat.node_tree.links.new(colour, bsdf.inputs["Base Color"])
             if cutout:
                 mat.node_tree.links.new(node.outputs["Alpha"], bsdf.inputs["Alpha"])
