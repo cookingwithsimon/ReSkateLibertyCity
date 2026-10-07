@@ -2,6 +2,7 @@
 
     blender --background --python build_area.py -- <export folders> <area.json> <out.blend> [--no-conjugate]
         [--no-lights] [--max-lights N] [--light-energy SCALE] [--sign-lights] [--vertex-shading]
+        [--spawn X Y Z HEADING]
 
 <export folders> (several joined with ";") is OpenIV's openFormats export (the .odr files and the
 subfolders beside them); <area.json> comes from `python -m liberty.select_area`; its "edge" placements
@@ -427,7 +428,19 @@ def main(argv):
     area = json.loads(area_file.read_text())
     builder = Builder(exports, vertex_shading="--vertex-shading" in argv)
     counts = place(area, builder, conjugate)
-    studio.add_spawn(street_spawn())
+    if "--spawn" in argv:
+        # GTA IV world x y z and the in-game heading (ReSkate's trainer shows both).
+        # Studio's spawn yaw is atan2 of the Empty's +Y in game axes, which works out to
+        # 180 - its Blender Z turn, so the Empty turns by 180 - heading.
+        i = argv.index("--spawn")
+        x, y, z, heading = (float(v) for v in argv[i + 1:i + 5])
+        cx, cy = area["centre"]
+        # The trainer's height is the skater's body: stand on the surface just below it.
+        below = [h for h in _hits(x - cx, y - cy) if h <= z + 0.5]
+        ground = below[0] + 0.2 if below and z - below[0] < 3.0 else z
+        studio.add_spawn((x - cx, y - cy, ground), yaw_degrees=180.0 - heading)
+    else:
+        studio.add_spawn(street_spawn())
     if "--no-lights" not in argv:
         limit = int(argv[argv.index("--max-lights") + 1]) if "--max-lights" in argv else 4000
         energy = float(argv[argv.index("--light-energy") + 1]) if "--light-energy" in argv else 1.0
